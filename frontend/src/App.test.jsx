@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+﻿import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -55,19 +55,19 @@ test('login shows the server error for bad credentials', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('No active account found')
 })
 
-test('registration shows the email domain error from the API', async () => {
+test('registration shows the server error', async () => {
   mockFetch((url) =>
     url.includes('/departments/')
       ? { body: [{ id: 1, name: 'Computer Science', code: 'CS' }] }
-      : { status: 400, body: { email: ['Students must register with an @students.au.edu.pk email address.'] } },
+      : { status: 400, body: { email: ['An account with this email already exists.'] } },
   )
   renderAt('/register')
   await userEvent.type(screen.getByLabelText('Full name'), 'Ali')
-  await userEvent.type(screen.getByLabelText('University email'), 'ali@gmail.com')
+  await userEvent.type(screen.getByLabelText('Email'), 'ali@students.au.edu.pk')
   await userEvent.selectOptions(await screen.findByLabelText('Department'), '1')
   await userEvent.type(screen.getByLabelText('Password'), 'Str0ng-Passw0rd!')
   await userEvent.click(screen.getByRole('button', { name: 'Register' }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('@students.au.edu.pk')
+  expect(await screen.findByRole('alert')).toHaveTextContent('already exists')
 })
 
 test('registration success asks the student to check their email', async () => {
@@ -78,7 +78,7 @@ test('registration success asks the student to check their email', async () => {
   )
   renderAt('/register')
   await userEvent.type(screen.getByLabelText('Full name'), 'Ali')
-  await userEvent.type(screen.getByLabelText('University email'), 'ali@students.au.edu.pk')
+  await userEvent.type(screen.getByLabelText('Email'), 'ali@students.au.edu.pk')
   await userEvent.selectOptions(await screen.findByLabelText('Department'), '1')
   await userEvent.type(screen.getByLabelText('Password'), 'Str0ng-Passw0rd!')
   await userEvent.click(screen.getByRole('button', { name: 'Register' }))

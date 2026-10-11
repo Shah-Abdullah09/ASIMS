@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
 
@@ -48,7 +48,7 @@ export default function Register() {
           <input value={form.full_name} onChange={set('full_name')} required />
         </label>
         <label>
-          University email
+          Email
           <input type="email" value={form.email} onChange={set('email')} required />
         </label>
         <label>

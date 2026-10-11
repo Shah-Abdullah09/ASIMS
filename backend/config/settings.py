@@ -47,8 +47,9 @@ MIDDLEWARE = [
 
 AUTH_USER_MODEL = 'accounts.User'
 
-# Students may only self-register with an email on this domain
-STUDENT_EMAIL_DOMAIN = os.getenv('STUDENT_EMAIL_DOMAIN', 'students.au.edu.pk')
+# Optional: restrict student self-registration to one email domain (e.g. students.au.edu.pk).
+# Empty means any valid email address (including personal accounts) may register.
+STUDENT_EMAIL_DOMAIN = os.getenv('STUDENT_EMAIL_DOMAIN', '')
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 48  # seconds
 

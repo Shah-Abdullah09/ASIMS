@@ -63,11 +63,23 @@ def test_student_registers_verifies_and_logs_in(api, dept):
     assert ok.json()['user']['role'] == 'student'
 
 
-def test_registration_rejects_wrong_email_domain(api, dept):
+def test_student_can_register_with_a_personal_email(api, dept):
+    assert register(api, dept, email='Ali.Khan@gmail.com').status_code == 201
+    user = User.objects.get(email='ali.khan@gmail.com')  # stored lowercase
+    assert user.role == Role.STUDENT and not user.is_email_verified
+
+
+def test_optional_domain_restriction_rejects_other_domains(api, dept, settings):
+    settings.STUDENT_EMAIL_DOMAIN = DOMAIN
     response = register(api, dept, email='ali@gmail.com')
     assert response.status_code == 400
     assert 'email' in response.json()
     assert not User.objects.filter(email='ali@gmail.com').exists()
+    assert register(api, dept).status_code == 201  # the configured domain still works
+
+
+def test_registration_rejects_invalid_email_format(api, dept):
+    assert register(api, dept, email='not-an-email').status_code == 400
 
 
 def test_registration_rejects_duplicate_email(api, dept):

@@ -34,7 +34,7 @@ class RegisterSerializer(serializers.Serializer):
     def validate_email(self, value):
         value = value.lower()
         domain = settings.STUDENT_EMAIL_DOMAIN.lower()
-        if not value.endswith('@' + domain):
+        if domain and not value.endswith('@' + domain):
             raise serializers.ValidationError(f'Students must register with an @{domain} email address.')
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError('An account with this email already exists.')

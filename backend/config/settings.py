@@ -45,6 +45,13 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+AUTH_USER_MODEL = 'accounts.User'
+
+# Students may only self-register with an email on this domain
+STUDENT_EMAIL_DOMAIN = os.getenv('STUDENT_EMAIL_DOMAIN', 'students.au.edu.pk')
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
+EMAIL_VERIFICATION_MAX_AGE = 60 * 60 * 48  # seconds
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
@@ -104,6 +111,8 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': ('rest_framework_simplejwt.authentication.JWTAuthentication',),
     'DEFAULT_PERMISSION_CLASSES': ('rest_framework.permissions.IsAuthenticated',),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 20,
 }
 
 SIMPLE_JWT = {

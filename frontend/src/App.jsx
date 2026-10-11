@@ -1,22 +1,24 @@
-import { useEffect, useState } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { useAuth } from './AuthContext.jsx'
+import Dashboard from './pages/Dashboard.jsx'
+import Login from './pages/Login.jsx'
+import Register from './pages/Register.jsx'
+import VerifyEmail from './pages/VerifyEmail.jsx'
 
-function App() {
-  const [apiStatus, setApiStatus] = useState('checking')
-
-  useEffect(() => {
-    fetch('/api/v1/health/')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('bad response'))))
-      .then((data) => setApiStatus(data.status))
-      .catch(() => setApiStatus('unreachable'))
-  }, [])
-
-  return (
-    <main>
-      <h1>ASIMS</h1>
-      <p>Automated Scholarship and Internship Management System</p>
-      <p>API status: {apiStatus}</p>
-    </main>
-  )
+function RequireAuth({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return <p>Loading...</p>
+  return user ? children : <Navigate to="/login" replace />
 }
 
-export default App
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
+  )
+}

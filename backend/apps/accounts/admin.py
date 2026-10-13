@@ -7,12 +7,12 @@ from .models import Department, User
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     ordering = ['email']
-    list_display = ['email', 'full_name', 'role', 'department', 'is_active', 'is_email_verified']
+    list_display = ['email', 'full_name', 'registration_id', 'role', 'department', 'is_active', 'is_email_verified']
     list_filter = ['role', 'is_active', 'is_email_verified']
-    search_fields = ['email', 'full_name']
+    search_fields = ['email', 'full_name', 'registration_id']
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Profile', {'fields': ('full_name', 'role', 'department', 'is_email_verified')}),
+        ('Profile', {'fields': ('full_name', 'registration_id', 'role', 'department', 'is_email_verified')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
     )
     add_fieldsets = (

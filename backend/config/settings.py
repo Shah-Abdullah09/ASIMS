@@ -102,6 +102,14 @@ USE_TZ = True
 STATIC_URL = 'static/'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'  # local filesystem storage for uploads (see report 1.5.2)
+
+# All uploads go through Django's storage API. To move to S3 later, install django-storages
+# and change only the "default" backend (and its OPTIONS) here; no upload code changes.
+# Media is never served publicly: files are streamed by permission-checked views.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOWED_ORIGINS = [

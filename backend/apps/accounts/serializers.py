@@ -19,7 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'full_name', 'role', 'department', 'department_name',
-                  'is_email_verified']
+                  'registration_id', 'is_email_verified']
         read_only_fields = fields
 
 
@@ -75,7 +75,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'role', 'department', 'is_active',
+        fields = ['id', 'email', 'full_name', 'role', 'department', 'registration_id', 'is_active',
                   'is_email_verified', 'password', 'date_joined']
         read_only_fields = ['id', 'is_email_verified', 'date_joined']
 

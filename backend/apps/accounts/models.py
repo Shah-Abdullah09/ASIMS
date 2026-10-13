@@ -1,4 +1,5 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.validators import RegexValidator
 from django.db import models
 
 
@@ -56,6 +57,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     role = models.CharField(max_length=30, choices=Role.choices, default=Role.STUDENT)
     department = models.ForeignKey(
         Department, null=True, blank=True, on_delete=models.PROTECT, related_name='users'
+    )
+    # University registration number (students), e.g. 233585
+    registration_id = models.CharField(
+        max_length=6, unique=True, null=True, blank=True,
+        validators=[RegexValidator(r'^\d{6}$', 'Registration ID must be exactly 6 digits.')],
     )
     is_email_verified = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)

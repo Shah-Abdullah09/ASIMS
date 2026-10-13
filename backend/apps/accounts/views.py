@@ -10,7 +10,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import Department, Role, User
 from .permissions import has_role
-from .serializers import (AdminUserSerializer, DepartmentSerializer, LoginSerializer,
+from .serializers import (AdminUserSerializer, DepartmentSerializer, LoginSerializer, ProfileUpdateSerializer,
                           RegisterSerializer, UserSerializer, VerifyEmailSerializer)
 
 VERIFY_SALT = 'asims-email-verification'
@@ -78,6 +78,12 @@ class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(UserSerializer(request.user).data)
 
 

@@ -35,13 +35,20 @@ def make_student(email, dept, **extra):
 
 # ---------- registration ID on the profile ----------
 
-@pytest.mark.parametrize('value', ['23358', '2335850', '23358a', 'abcdef'])
-def test_registration_id_must_be_six_digits(dept, value):
+@pytest.mark.parametrize('value', ['23358', '123456789', '23358a', 'abcdef', '1234 567'])
+def test_registration_id_must_be_six_to_eight_digits(dept, value):
     user = User(email='a@x.com', full_name='Ali Khan', role=Role.STUDENT, department=dept, registration_id=value)
     user.set_password(PASSWORD)
     with pytest.raises(ValidationError) as err:
         user.full_clean()
     assert 'registration_id' in err.value.message_dict
+
+
+@pytest.mark.parametrize('value', ['233585', '2335851', '23358512'])
+def test_registration_id_accepts_six_to_eight_digits(dept, value):
+    user = User(email='a@x.com', full_name='Ali Khan', role=Role.STUDENT, department=dept, registration_id=value)
+    user.set_password(PASSWORD)
+    user.full_clean()
 
 
 def test_registration_id_is_unique_but_optional(dept):

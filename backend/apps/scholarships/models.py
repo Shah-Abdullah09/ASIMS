@@ -67,7 +67,7 @@ class Application(models.Model):
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
     # A. Applicant (Q1-8). Name, email and registration ID are copied from the profile.
-    registration_id = models.CharField(max_length=6, blank=True)
+    registration_id = models.CharField(max_length=8, blank=True)
     program = models.CharField('degree title / program', max_length=100, blank=True)
     applicant_name = models.CharField(max_length=150, blank=True)
     gender = models.CharField(max_length=10, choices=Gender.choices, blank=True)

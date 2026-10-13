@@ -5,7 +5,8 @@ import uuid
 
 
 def system_file_name(original_name):
-    """Replace the uploaded name with a random one, keeping only a lowercase extension."""
+    """Replace the uploaded name with a random one, keeping only a lowercase extension.
+    The upload views pass a name whose extension comes from the detected file type."""
     ext = os.path.splitext(original_name)[1].lower()
     return f'{uuid.uuid4().hex}{ext}'
 

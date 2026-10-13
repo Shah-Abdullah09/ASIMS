@@ -321,3 +321,29 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
 
     def get_summary(self, obj):
         return summarize(obj)
+
+
+# ---------- documents ----------
+
+class DocumentSerializer(serializers.ModelSerializer):
+    """A stored file. Its download link goes through a permission-checked view; no public media URL."""
+
+    download_url = serializers.SerializerMethodField()
+    uploaded_by = serializers.CharField(source='uploaded_by.full_name', read_only=True)
+
+    class Meta:
+        model = m.ApplicationDocument
+        fields = ['id', 'slot', 'original_name', 'content_type', 'size', 'uploaded_by', 'uploaded_at',
+                  'download_url']
+
+    def get_download_url(self, obj):
+        return f'/api/v1/scholarships/documents/{obj.pk}/download/'
+
+
+class DocumentUploadSerializer(serializers.Serializer):
+    slot = serializers.ChoiceField(choices=m.DocumentSlot.choices)
+    file = serializers.FileField()
+
+
+class DocumentReplaceSerializer(serializers.Serializer):
+    file = serializers.FileField()

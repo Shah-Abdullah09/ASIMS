@@ -11,7 +11,10 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from . import models as m
+from .choices import ApplicationStatus
 from .calculations import summarize
+from .declarations import render, sync_declarations
+from .submission import completion
 from .validators import cnic_validator, landline_validator, mobile_validator
 
 
@@ -135,6 +138,7 @@ class SectionSerializer(serializers.ModelSerializer):
             model_class = NESTED[name][0].Meta.model
             getattr(instance, name).all().delete()
             model_class.objects.bulk_create(model_class(application=instance, **row) for row in rows)
+        sync_declarations(instance)
         return instance
 
 
@@ -190,6 +194,25 @@ class ParentsSection(SectionSerializer):
 
     class Meta(SectionSerializer.Meta):
         fields = ['parents']
+
+    @transaction.atomic
+    def update(self, instance, validated):
+        """Update father / mother / guardian in place (matched by role) so their Form 2
+        declarations and uploaded scans survive re-saving this step."""
+        rows = validated.pop('parents', None)
+        if rows is not None:
+            keep = []
+            for row in rows:
+                parent, _ = m.ParentGuardian.objects.update_or_create(
+                    application=instance, role=row['role'], defaults=row)
+                keep.append(parent.pk)
+            for parent in instance.parents.exclude(pk__in=keep):
+                declaration = getattr(parent, 'declaration', None)
+                if declaration and declaration.scan:
+                    name, storage = declaration.scan.name, declaration.scan.storage
+                    transaction.on_commit(lambda storage=storage, name=name: storage.delete(name))
+                parent.delete()
+        return super().update(instance, validated)
 
 
 class IncomeSection(SectionSerializer):
@@ -308,6 +331,7 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
     is_editable = serializers.BooleanField(read_only=True)
     summary = serializers.SerializerMethodField()
+    completion = serializers.SerializerMethodField()
 
     class Meta:
         model = m.Application
@@ -321,6 +345,9 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
 
     def get_summary(self, obj):
         return summarize(obj)
+
+    def get_completion(self, obj):
+        return completion(obj)
 
 
 # ---------- documents ----------
@@ -347,3 +374,51 @@ class DocumentUploadSerializer(serializers.Serializer):
 
 class DocumentReplaceSerializer(serializers.Serializer):
     file = serializers.FileField()
+
+
+# ---------- Form 2 declarations ----------
+
+class DeclarationSerializer(serializers.ModelSerializer):
+    """One stamp-paper declaration: the printable text, its scan and whether the office has the original."""
+
+    person = serializers.CharField(source='parent.get_role_display', read_only=True)
+    person_name = serializers.CharField(source='parent.name', read_only=True)
+    printable = serializers.SerializerMethodField()
+    scan = serializers.SerializerMethodField()
+    physical_received_by = serializers.CharField(source='physical_received_by.full_name', default=None,
+                                                 read_only=True)
+    can_upload_scan = serializers.SerializerMethodField()
+
+    class Meta:
+        model = m.Declaration
+        fields = ['id', 'person', 'person_name', 'template', 'printable', 'scan', 'can_upload_scan',
+                  'physical_received_on', 'physical_received_by', 'is_complete']
+
+    def get_printable(self, obj):
+        return render(obj)
+
+    def get_scan(self, obj):
+        if not obj.scan:
+            return None
+        return {'original_name': obj.scan_original_name, 'content_type': obj.scan_content_type,
+                'size': obj.scan_size, 'uploaded_at': obj.scan_uploaded_at,
+                'download_url': f'/api/v1/scholarships/declarations/{obj.pk}/scan/'}
+
+    def get_can_upload_scan(self, obj):
+        return scan_upload_allowed(obj)
+
+
+def scan_upload_allowed(declaration):
+    """Form 2 stays open after submission; a scan can no longer be replaced once the original is received."""
+    if declaration.application.status in (ApplicationStatus.APPROVED, ApplicationStatus.REJECTED):
+        return False
+    return not (declaration.scan and declaration.physical_received_on)
+
+
+class ReceiveSerializer(serializers.Serializer):
+    received_on = serializers.DateField(required=False)
+
+    def validate_received_on(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError('The date cannot be in the future.')
+        return value

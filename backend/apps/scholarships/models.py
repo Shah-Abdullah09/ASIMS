@@ -13,6 +13,7 @@ from django.utils import timezone
 from apps.documents.paths import declaration_scan_path, scholarship_document_path
 
 from .choices import (PROFESSION_TEMPLATE, AccommodationStatus, AccommodationType, ApplicationStatus,
+                      DeclarationTemplate,
                       AssetIncomeSource, AssetTitle, Division, DocumentSlot, EducationLevel, Gender,
                       LandCategory, LifeStatus, MaritalStatus, ParentRole, Profession, Relationship,
                       RentPaidBy, RoomRange, TransportType)
@@ -364,6 +365,8 @@ class Declaration(models.Model):
     The scan is uploaded online; the original is handed to the office."""
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='declarations')
     parent = models.OneToOneField(ParentGuardian, on_delete=models.CASCADE, related_name='declaration')
+    # Template the text was produced from; a later profession change makes an existing scan invalid
+    template = models.CharField(max_length=20, choices=DeclarationTemplate.choices)
     scan = models.FileField(upload_to=declaration_scan_path, max_length=255, blank=True)
     scan_original_name = models.CharField(max_length=255, blank=True)
     scan_content_type = models.CharField(max_length=50, blank=True)
@@ -377,10 +380,6 @@ class Declaration(models.Model):
 
     def __str__(self):
         return f'Declaration of {self.parent}'
-
-    @property
-    def template(self):
-        return self.parent.declaration_template
 
     @property
     def is_complete(self):

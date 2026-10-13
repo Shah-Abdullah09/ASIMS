@@ -1,3 +1,4 @@
+from django.core.mail import send_mail
 from django.db import transaction
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
@@ -16,10 +17,14 @@ from apps.accounts.permissions import has_role
 from apps.documents.validation import inspect_upload
 
 from .checklist import build_checklist, max_files
-from .models import Application, ApplicationDocument, ScholarshipCycle
+from .choices import ApplicationStatus
+from .declarations import sync_declarations
+from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle
 from .serializers import (SECTIONS, ApplicationCreateSerializer, ApplicationDetailSerializer,
-                          ApplicationListSerializer, CycleSerializer, DocumentReplaceSerializer,
-                          DocumentSerializer, DocumentUploadSerializer)
+                          ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
+                          DocumentReplaceSerializer, DocumentSerializer, DocumentUploadSerializer,
+                          ReceiveSerializer, scan_upload_allowed)
+from .submission import readiness
 
 DETAIL_PREFETCH = ['household_members', 'studying_members', 'parents', 'earning_members', 'asset_income',
                    'utility_months', 'vehicles', 'land_holdings', 'asset_worth', 'education_records',
@@ -133,7 +138,78 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
             transaction.on_commit(lambda: storage.delete(old_name))
         return Response(DocumentSerializer(doc).data)
 
+    # ---------- submit ----------
+
+    @action(detail=True, methods=['get'])
+    def readiness(self, request, pk=None):
+        """What still stops this application from being submitted, grouped by wizard step."""
+        return Response(readiness(self.get_object()))
+
+    @action(detail=True, methods=['post'])
+    def submit(self, request, pk=None):
+        app = self._editable_app()
+        result = readiness(app)
+        if not result['ready']:
+            return Response({'detail': 'The application is not complete yet.', **result},
+                            status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            sync_declarations(app)
+            app.status = ApplicationStatus.PENDING
+            app.submitted_at = timezone.now()
+            app.save(update_fields=['status', 'submitted_at', 'updated_at'])
+        self._send_confirmation(app)
+        return Response(ApplicationDetailSerializer(self._fresh(app)).data)
+
+    @staticmethod
+    def _send_confirmation(app):
+        count = app.declarations.count()
+        form2 = (f'You still need to upload the scan of {count} stamp-paper income declaration(s) and hand the '
+                 'original(s) to the Placement Office.' if count else '')
+        send_mail(
+            f'ASIMS: scholarship application #{app.pk} submitted',
+            f'Dear {app.applicant_name},\n\nYour {app.cycle.name} need based financial grant application '
+            f'(number {app.pk}) was submitted on {timezone.localtime(app.submitted_at):%d %b %Y %H:%M}.\n'
+            f'{form2}\n\nYou can follow its status in ASIMS.',
+            None, [app.email or app.student.email])
+
+    # ---------- Form 2 declarations ----------
+
+    @action(detail=True, methods=['get'])
+    def declarations(self, request, pk=None):
+        """Printable declaration text for each earning parent or guardian, with scan and receipt status."""
+        app = self.get_object()
+        return Response(DeclarationSerializer(self._declarations(app), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path=r'declarations/(?P<declaration_id>\d+)/scan')
+    def declaration_scan(self, request, pk=None, declaration_id=None):
+        """Upload or replace the scan of the signed stamp paper. Allowed after submission too,
+        until the office has received the original."""
+        app = self.get_object()
+        declaration = get_object_or_404(self._declarations(app), pk=declaration_id)
+        if not scan_upload_allowed(declaration):
+            raise PermissionDenied('The office has already received this declaration, so the scan cannot be changed.')
+        serializer = DocumentReplaceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        upload = serializer.validated_data['file']
+        content_type, ext = self._inspect(upload)
+        old = (declaration.scan.storage, declaration.scan.name) if declaration.scan else None
+        declaration.scan_original_name = upload.name[:255]
+        upload.name = stored_name(ext)
+        declaration.scan = upload
+        declaration.scan_content_type, declaration.scan_size = content_type, upload.size
+        declaration.scan_uploaded_by, declaration.scan_uploaded_at = request.user, timezone.now()
+        with transaction.atomic():
+            declaration.save()
+            if old:
+                transaction.on_commit(lambda: old[0].delete(old[1]))
+        return Response(DeclarationSerializer(declaration).data)
+
     # ---------- helpers ----------
+
+    @staticmethod
+    def _declarations(app):
+        return app.declarations.select_related('parent', 'application', 'physical_received_by').prefetch_related(
+            'application__land_holdings')
 
     @staticmethod
     def _inspect(upload):
@@ -166,3 +242,53 @@ class DocumentDownloadView(APIView):
                                 filename=doc.original_name, as_attachment=False)
         response['Cache-Control'] = 'private, no-store'
         return response
+
+
+def _can_review(user):
+    return user.role in DOCUMENT_REVIEWER_ROLES
+
+
+class DeclarationScanDownloadView(APIView):
+    """Streams a Form 2 scan to its student or to reviewing staff."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, declaration_id):
+        declaration = get_object_or_404(Declaration.objects.select_related('application'), pk=declaration_id)
+        if declaration.application.student_id != request.user.pk and not _can_review(request.user):
+            raise NotFound()
+        if not declaration.scan:
+            raise NotFound('No scan has been uploaded yet.')
+        response = FileResponse(declaration.scan.open('rb'), content_type=declaration.scan_content_type,
+                                filename=declaration.scan_original_name, as_attachment=False)
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+
+class DeclarationReceiveView(APIView):
+    """Placement Office records (POST) or undoes (DELETE) receipt of the original stamp paper."""
+
+    permission_classes = [has_role(*DOCUMENT_REVIEWER_ROLES)]
+
+    def _declaration(self, declaration_id):
+        declaration = get_object_or_404(
+            Declaration.objects.select_related('application', 'parent', 'physical_received_by'), pk=declaration_id)
+        if declaration.application.status == ApplicationStatus.DRAFT:
+            raise ValidationError({'detail': 'The application has not been submitted yet.'})
+        return declaration
+
+    def post(self, request, declaration_id):
+        declaration = self._declaration(declaration_id)
+        serializer = ReceiveSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        declaration.physical_received_on = serializer.validated_data.get('received_on', timezone.localdate())
+        declaration.physical_received_by = request.user
+        declaration.save(update_fields=['physical_received_on', 'physical_received_by'])
+        return Response(DeclarationSerializer(declaration).data)
+
+    def delete(self, request, declaration_id):
+        declaration = self._declaration(declaration_id)
+        declaration.physical_received_on = None
+        declaration.physical_received_by = None
+        declaration.save(update_fields=['physical_received_on', 'physical_received_by'])
+        return Response(DeclarationSerializer(declaration).data)

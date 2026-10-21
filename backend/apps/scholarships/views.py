@@ -1,5 +1,6 @@
 from django.core.mail import send_mail
 from django.db import transaction
+from django.db.models import Count, Q
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -19,16 +20,17 @@ from apps.documents.validation import inspect_upload
 from .checklist import build_checklist, max_files
 from .choices import ApplicationStatus
 from .declarations import sync_declarations
-from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle
+from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle, StatusChange
 from .serializers import (SECTIONS, ApplicationCreateSerializer, ApplicationDetailSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentSerializer, DocumentUploadSerializer,
-                          ReceiveSerializer, scan_upload_allowed)
+                          ReceiveSerializer, ReviewListSerializer, StaffApplicationDetailSerializer,
+                          StatusUpdateSerializer, scan_upload_allowed)
 from .submission import readiness
 
 DETAIL_PREFETCH = ['household_members', 'studying_members', 'parents', 'earning_members', 'asset_income',
                    'utility_months', 'vehicles', 'land_holdings', 'asset_worth', 'education_records',
-                   'previous_scholarships']
+                   'previous_scholarships', 'status_history__changed_by']
 
 # Staff who may open any applicant's files (the review chain adds more roles in Phase 3)
 DOCUMENT_REVIEWER_ROLES = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
@@ -157,6 +159,9 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
             app.status = ApplicationStatus.PENDING
             app.submitted_at = timezone.now()
             app.save(update_fields=['status', 'submitted_at', 'updated_at'])
+            StatusChange.objects.create(application=app, from_status=ApplicationStatus.DRAFT,
+                                        to_status=ApplicationStatus.PENDING, remarks='Submitted by the student.',
+                                        changed_by=request.user)
         self._send_confirmation(app)
         return Response(ApplicationDetailSerializer(self._fresh(app)).data)
 
@@ -292,3 +297,56 @@ class DeclarationReceiveView(APIView):
         declaration.physical_received_by = None
         declaration.save(update_fields=['physical_received_on', 'physical_received_by'])
         return Response(DeclarationSerializer(declaration).data)
+
+
+class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """Placement Office review of submitted applications (drafts are not shown).
+
+    Query parameters: cycle, department, status, complete (true/false), search (name, Registration ID,
+    CNIC or email), ordering (submitted_at, -submitted_at, applicant_name)."""
+
+    permission_classes = [has_role(*DOCUMENT_REVIEWER_ROLES)]
+    ORDERINGS = {'submitted_at', '-submitted_at', 'applicant_name', '-applicant_name'}
+
+    def get_serializer_class(self):
+        return ReviewListSerializer if self.action == 'list' else StaffApplicationDetailSerializer
+
+    def get_queryset(self):
+        qs = (Application.objects.exclude(status=ApplicationStatus.DRAFT)
+              .select_related('cycle', 'student__department', 'reviewed_by')
+              .prefetch_related('declarations'))
+        if self.action != 'list':
+            return qs.prefetch_related(*DETAIL_PREFETCH, 'documents__uploaded_by')
+        params = self.request.query_params
+        if params.get('cycle'):
+            qs = qs.filter(cycle_id=params['cycle'])
+        if params.get('department'):
+            qs = qs.filter(student__department_id=params['department'])
+        if params.get('status'):
+            qs = qs.filter(status=params['status'])
+        if params.get('complete') in ('true', 'false'):
+            # complete = every declaration has a scan and its original received
+            qs = qs.annotate(open_declarations=Count('declarations', filter=Q(declarations__scan='') | Q(
+                declarations__physical_received_on__isnull=True), distinct=True))
+            qs = qs.filter(open_declarations=0) if params['complete'] == 'true' else qs.filter(open_declarations__gt=0)
+        if search := params.get('search', '').strip():
+            qs = qs.filter(Q(applicant_name__icontains=search) | Q(registration_id__icontains=search)
+                           | Q(cnic__icontains=search) | Q(email__icontains=search)
+                           | Q(student__email__icontains=search))
+        ordering = params.get('ordering', '-submitted_at')
+        return qs.order_by(ordering if ordering in self.ORDERINGS else '-submitted_at', 'pk')
+
+    @action(detail=True, methods=['post'], url_path='status')
+    def set_status(self, request, pk=None):
+        """Set pending / under review / approved / rejected with remarks. Every change is recorded."""
+        app = self.get_object()
+        serializer = StatusUpdateSerializer(data=request.data, context={'application': app})
+        serializer.is_valid(raise_exception=True)
+        new_status, remarks = serializer.validated_data['status'], serializer.validated_data['remarks']
+        with transaction.atomic():
+            StatusChange.objects.create(application=app, from_status=app.status, to_status=new_status,
+                                        remarks=remarks, changed_by=request.user)
+            app.status, app.review_remarks = new_status, remarks
+            app.reviewed_by, app.reviewed_at = request.user, timezone.now()
+            app.save(update_fields=['status', 'review_remarks', 'reviewed_by', 'reviewed_at', 'updated_at'])
+        return Response(StaffApplicationDetailSerializer(self.get_queryset().get(pk=app.pk)).data)

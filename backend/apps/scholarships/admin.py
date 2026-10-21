@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (Application, ApplicationDocument, AssetIncome, AssetWorth, Declaration, EarningMember,
                      EducationRecord, HouseholdMember, LandHolding, ParentGuardian, PreviousScholarship,
-                     ScholarshipCycle, StudyingMember, UtilityMonth, Vehicle)
+                     ScholarshipCycle, StatusChange, StudyingMember, UtilityMonth, Vehicle)
 
 
 @admin.register(ScholarshipCycle)
@@ -25,6 +25,11 @@ class DocumentInline(ReadOnlyFileInline):
     fields = readonly_fields = ['slot', 'original_name', 'content_type', 'size', 'uploaded_by', 'uploaded_at']
 
 
+class StatusHistoryInline(ReadOnlyFileInline):
+    model = StatusChange
+    fields = readonly_fields = ['from_status', 'to_status', 'remarks', 'changed_by', 'changed_at']
+
+
 class DeclarationInline(ReadOnlyFileInline):
     model = Declaration
     fields = ['parent', 'scan_original_name', 'scan_uploaded_at', 'physical_received_on', 'physical_received_by']
@@ -45,7 +50,7 @@ class ApplicationAdmin(admin.ModelAdmin):
     list_select_related = ['cycle', 'student__department']
     inlines = [tabular(m) for m in (HouseholdMember, EarningMember, StudyingMember, ParentGuardian, AssetIncome,
                                     UtilityMonth, Vehicle, LandHolding, AssetWorth, EducationRecord,
-                                    PreviousScholarship)] + [DocumentInline, DeclarationInline]
+                                    PreviousScholarship)] + [DocumentInline, DeclarationInline, StatusHistoryInline]
 
     @admin.display(description='Department', ordering='student__department__name')
     def student_department(self, obj):

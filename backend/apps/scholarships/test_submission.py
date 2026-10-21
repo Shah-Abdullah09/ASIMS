@@ -82,11 +82,11 @@ MOTHER = {'role': 'mother', 'name': 'Bano Bibi', 'cnic': '36302-2222222-2', 'sta
           'profession': 'not_earning'}
 
 
-def fill_complete(api, app_id, parents=None):
+def fill_complete(api, app_id, parents=None, cnic='36302-1234567-1'):
     """Fill every required answer and upload every always-required document."""
     save(api, app_id, 'personal', {
         'program': 'BS Software Engineering', 'gender': 'male', 'marital_status': 'single',
-        'cnic': '36302-1234567-1', 'date_of_birth': '2004-05-01', 'domicile': 'Multan',
+        'cnic': cnic, 'date_of_birth': '2004-05-01', 'domicile': 'Multan',
         'present_address': 'House 1, Street 2, Multan', 'permanent_address': 'House 1, Street 2, Multan',
         'mobile': '03001234567'})
     save(api, app_id, 'household', {'total_family_members': 3, 'household_members': [

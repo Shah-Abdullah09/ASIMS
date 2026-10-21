@@ -384,3 +384,20 @@ class Declaration(models.Model):
     @property
     def is_complete(self):
         return bool(self.scan) and self.physical_received_on is not None
+
+
+class StatusChange(models.Model):
+    """Every status change of an application: submission by the student and decisions by staff."""
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='status_history')
+    from_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
+    to_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
+    remarks = models.TextField(blank=True)
+    changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                   related_name='scholarship_status_changes')
+    changed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['changed_at', 'pk']
+
+    def __str__(self):
+        return f'#{self.application_id}: {self.from_status} -> {self.to_status}'

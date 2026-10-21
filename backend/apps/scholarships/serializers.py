@@ -325,6 +325,15 @@ class ApplicationCreateSerializer(serializers.Serializer):
         )
 
 
+class StatusChangeSerializer(serializers.ModelSerializer):
+    changed_by = serializers.CharField(source='changed_by.full_name', read_only=True)
+    changed_by_role = serializers.CharField(source='changed_by.get_role_display', read_only=True)
+
+    class Meta:
+        model = m.StatusChange
+        fields = ['from_status', 'to_status', 'remarks', 'changed_by', 'changed_by_role', 'changed_at']
+
+
 class ApplicationDetailSerializer(serializers.ModelSerializer):
     cycle = CycleSerializer(read_only=True)
     department = serializers.CharField(source='student.department.name', default=None, read_only=True)
@@ -332,6 +341,7 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     is_editable = serializers.BooleanField(read_only=True)
     summary = serializers.SerializerMethodField()
     completion = serializers.SerializerMethodField()
+    status_history = StatusChangeSerializer(many=True, read_only=True)
 
     class Meta:
         model = m.Application
@@ -422,3 +432,71 @@ class ReceiveSerializer(serializers.Serializer):
         if value > timezone.localdate():
             raise serializers.ValidationError('The date cannot be in the future.')
         return value
+
+
+# ---------- staff review (Placement Officer, Administrator) ----------
+
+class ReviewListSerializer(serializers.ModelSerializer):
+    cycle_name = serializers.CharField(source='cycle.name', read_only=True)
+    department = serializers.CharField(source='student.department.name', default=None, read_only=True)
+    completion = serializers.SerializerMethodField()
+
+    class Meta:
+        model = m.Application
+        fields = ['id', 'applicant_name', 'registration_id', 'cnic', 'email', 'department', 'cycle', 'cycle_name',
+                  'status', 'submitted_at', 'reviewed_at', 'completion']
+
+    def get_completion(self, obj):
+        return completion(obj)
+
+
+class StaffApplicationDetailSerializer(ApplicationDetailSerializer):
+    """Everything the student entered, plus their documents, Form 2 declarations and review details."""
+
+    student = serializers.SerializerMethodField()
+    reviewed_by = serializers.CharField(source='reviewed_by.full_name', default=None, read_only=True)
+    documents = serializers.SerializerMethodField()
+    declarations = serializers.SerializerMethodField()
+
+    class Meta(ApplicationDetailSerializer.Meta):
+        exclude = []
+
+    def get_student(self, obj):
+        s = obj.student
+        return {'id': s.pk, 'full_name': s.full_name, 'email': s.email, 'registration_id': s.registration_id,
+                'department': s.department.name if s.department else None}
+
+    def get_documents(self, obj):
+        from .checklist import build_checklist  # avoid a circular import
+        return build_checklist(obj, DocumentSerializer)
+
+    def get_declarations(self, obj):
+        return DeclarationSerializer(obj.declarations.select_related('parent', 'application', 'physical_received_by'),
+                                     many=True).data
+
+
+REVIEW_STATUSES = [ApplicationStatus.PENDING, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED,
+                   ApplicationStatus.REJECTED]
+
+
+class StatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=[(s.value, s.label) for s in REVIEW_STATUSES])
+    remarks = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+
+    def validate(self, attrs):
+        app = self.context['application']
+        remarks = attrs.get('remarks', '').strip()
+        if attrs['status'] == ApplicationStatus.REJECTED and not remarks:
+            raise serializers.ValidationError({'remarks': 'Give the reason for rejecting, so the student knows why.'})
+        if attrs['status'] == ApplicationStatus.APPROVED:
+            state = completion(app)
+            if not state['complete']:
+                missing = [label for key, label in (('scans_uploaded', 'Form 2 scan(s)'),
+                                                    ('physical_copies_received', 'original stamp paper(s)'))
+                           if not state[key]]
+                raise serializers.ValidationError(
+                    {'status': f'The application is not complete yet. Missing: {", ".join(missing)}.'})
+        if attrs['status'] == app.status and remarks == app.review_remarks:
+            raise serializers.ValidationError({'status': 'Nothing changed.'})
+        attrs['remarks'] = remarks
+        return attrs

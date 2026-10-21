@@ -5,6 +5,7 @@ from . import views
 
 router = DefaultRouter()
 router.register('scholarships/applications', views.StudentApplicationViewSet, basename='scholarship-applications')
+router.register('scholarships/review/applications', views.StaffApplicationViewSet, basename='scholarship-review')
 
 urlpatterns = [
     path('scholarships/cycles/open/', views.OpenCycleListView.as_view(), name='open-cycles'),

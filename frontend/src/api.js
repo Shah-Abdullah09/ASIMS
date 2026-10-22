@@ -23,6 +23,15 @@ export function errorMessage(body) {
     .join(' | ')
 }
 
+// Keeps the server's structured errors (per field, per table row) next to the readable message
+export class ApiError extends Error {
+  constructor(status, data) {
+    super(errorMessage(data))
+    this.status = status
+    this.data = data
+  }
+}
+
 export async function api(path, { method = 'GET', body, auth = true } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   const tokens = loadTokens()
@@ -34,6 +43,6 @@ export async function api(path, { method = 'GET', body, auth = true } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   })
   const data = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(errorMessage(data))
+  if (!res.ok) throw new ApiError(res.status, data)
   return data
 }

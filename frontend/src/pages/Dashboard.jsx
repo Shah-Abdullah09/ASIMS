@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext.jsx'
 
 const ROLE_LABELS = {
@@ -28,7 +28,14 @@ export default function Dashboard() {
       <h1>Welcome, {user.full_name}</h1>
       <p>Role: {ROLE_LABELS[user.role] ?? user.role}</p>
       {user.department_name && <p>Department: {user.department_name}</p>}
-      <p>Your role-specific tools will appear here as each module is built.</p>
+      {user.role === 'student' ? (
+        <p>
+          <Link to="/scholarships">Scholarship applications</Link>: apply for the Need Based Financial Grant or
+          continue your application.
+        </p>
+      ) : (
+        <p>Your role-specific tools will appear here as each module is built.</p>
+      )}
       <button onClick={onLogout}>Log out</button>
     </main>
   )

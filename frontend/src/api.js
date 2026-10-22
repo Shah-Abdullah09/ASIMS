@@ -46,3 +46,30 @@ export async function api(path, { method = 'GET', body, auth = true } = {}) {
   if (!res.ok) throw new ApiError(res.status, data)
   return data
 }
+
+function authHeaders() {
+  const tokens = loadTokens()
+  return tokens?.access ? { Authorization: `Bearer ${tokens.access}` } : {}
+}
+
+/** Send a file (multipart). The browser sets the multipart Content-Type itself. */
+export async function apiUpload(path, formData, { method = 'POST' } = {}) {
+  const res = await fetch(`/api/v1${path}`, { method, headers: authHeaders(), body: formData })
+  const data = await res.json().catch(() => null)
+  if (!res.ok) throw new ApiError(res.status, data)
+  return data
+}
+
+/** Open a protected file in a new tab. Files have no public link, so fetch it with the login token first. */
+export async function openProtectedFile(path) {
+  const url = path.startsWith('/api/v1') ? path : `/api/v1${path}`
+  const res = await fetch(url, { headers: authHeaders() })
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null))
+  const objectUrl = URL.createObjectURL(await res.blob())
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.target = '_blank'
+  link.rel = 'noopener'
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+}

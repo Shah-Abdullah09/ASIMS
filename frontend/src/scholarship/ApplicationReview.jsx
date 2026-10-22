@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api.js'
-import { LockedBanner, StepNav, useApplication } from './ApplicationWizard.jsx'
+import { LockedBanner, StepNav } from './ApplicationWizard.jsx'
+import { useApplication } from './useApplication.js'
 import { rupees } from './convert.js'
 import { DOCUMENT_LABELS } from './options.js'
 import { stepByKey } from './steps.jsx'
@@ -35,7 +36,10 @@ export default function ApplicationReview() {
     setMessage({ kind: '', text: '' })
     try {
       setApp(await api(`/scholarships/applications/${id}/submit/`, { method: 'POST' }))
-      setMessage({ kind: 'ok', text: 'Your application has been submitted. A confirmation email has been sent to you.' })
+      setMessage({
+        kind: 'ok',
+        text: 'Your application has been submitted. A confirmation email has been sent to you. Next: upload the Form 2 scan and hand in the original.',
+      })
     } catch (err) {
       setMessage({ kind: 'error', text: err.message })
       refreshReadiness()
@@ -50,6 +54,7 @@ export default function ApplicationReview() {
       <p className="crumbs"><Link to="/scholarships">My scholarship applications</Link> / {app.cycle.name} / Application {app.id}</p>
       <h1>Need Based Financial Grant</h1>
       <LockedBanner app={app} />
+      {!editable && <p><Link to={`/scholarships/${id}/status`}>See your application status</Link></p>}
       <div className="wizard">
         <StepNav id={id} current="review" readiness={readiness} editable={editable} />
         <section className="step-body">
@@ -93,7 +98,7 @@ export default function ApplicationReview() {
               ))}
               {readiness.missing_documents.length > 0 && (
                 <div className="todo">
-                  <p><strong>Documents</strong></p>
+                  <p><strong>Documents</strong> <Link to={`/scholarships/${id}/documents`}>Upload</Link></p>
                   <ul>{readiness.missing_documents.map((slot) => <li key={slot}>{DOCUMENT_LABELS[slot] || slot}</li>)}</ul>
                 </div>
               )}

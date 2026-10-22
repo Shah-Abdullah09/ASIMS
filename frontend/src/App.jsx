@@ -6,7 +6,10 @@ import Register from './pages/Register.jsx'
 import VerifyEmail from './pages/VerifyEmail.jsx'
 import ApplicationReview from './scholarship/ApplicationReview.jsx'
 import ApplicationWizard from './scholarship/ApplicationWizard.jsx'
+import DocumentsPage from './scholarship/DocumentsPage.jsx'
+import Form2Page from './scholarship/Form2Page.jsx'
 import ScholarshipHome from './scholarship/ScholarshipHome.jsx'
+import StatusPage from './scholarship/StatusPage.jsx'
 
 function RequireAuth({ children, role }) {
   const { user, loading } = useAuth()
@@ -25,6 +28,9 @@ export default function App() {
       <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
       <Route path="/scholarships" element={<RequireAuth role="student"><ScholarshipHome /></RequireAuth>} />
       <Route path="/scholarships/:id/review" element={<RequireAuth role="student"><ApplicationReview /></RequireAuth>} />
+      <Route path="/scholarships/:id/documents" element={<RequireAuth role="student"><DocumentsPage /></RequireAuth>} />
+      <Route path="/scholarships/:id/form2" element={<RequireAuth role="student"><Form2Page /></RequireAuth>} />
+      <Route path="/scholarships/:id/status" element={<RequireAuth role="student"><StatusPage /></RequireAuth>} />
       <Route path="/scholarships/:id/:step" element={<RequireAuth role="student"><ApplicationWizard /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

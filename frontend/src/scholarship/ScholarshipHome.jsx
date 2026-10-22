@@ -57,8 +57,8 @@ export default function ScholarshipHome() {
               <p className="field-hint">
                 {a.submitted_at ? `Submitted ${date(a.submitted_at)}` : `Last saved ${date(a.updated_at)}`}
               </p>
-              <Link className="button" to={`/scholarships/${a.id}/${a.status === 'draft' ? 'personal' : 'review'}`}>
-                {a.status === 'draft' ? 'Continue' : 'View'}
+              <Link className="button" to={`/scholarships/${a.id}/${a.status === 'draft' ? 'personal' : 'status'}`}>
+                {a.status === 'draft' ? 'Continue' : 'View status'}
               </Link>
             </li>
           ))}

@@ -1,40 +1,25 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { STATUS_LABELS } from './options.js'
 import { STEPS, stepByKey } from './steps.jsx'
+import { useApplication } from './useApplication.js'
 import './scholarship.css'
-
-export function useApplication(id) {
-  const [app, setApp] = useState(null)
-  const [readiness, setReadiness] = useState(null)
-  const [loadError, setLoadError] = useState('')
-
-  const refreshReadiness = useCallback(
-    () => api(`/scholarships/applications/${id}/readiness/`).then(setReadiness).catch(() => setReadiness(null)),
-    [id],
-  )
-
-  useEffect(() => {
-    api(`/scholarships/applications/${id}/`)
-      .then((data) => {
-        setApp(data)
-        if (data.is_editable) refreshReadiness()
-      })
-      .catch((err) => setLoadError(err.status === 404 ? 'Application not found.' : err.message))
-  }, [id, refreshReadiness])
-
-  return { app, setApp, readiness, refreshReadiness, loadError }
-}
 
 /** Left-hand list of steps; marks steps that still need something before submitting. */
 export function StepNav({ id, current, readiness, editable, onNavigate }) {
-  const items = [...STEPS.map((s) => ({ key: s.key, title: s.title })), { key: 'review', title: 'Review & submit' }]
+  const items = [
+    ...STEPS.map((s) => ({ key: s.key, title: s.title })),
+    { key: 'documents', title: 'Documents' },
+    { key: 'form2', title: 'Form 2 declarations' },
+    { key: 'review', title: 'Review & submit' },
+  ]
   return (
     <nav className="step-nav" aria-label="Application steps">
       <ol>
         {items.map((s, i) => {
-          const needs = editable && s.key !== 'review' && readiness?.sections?.[s.key]
+          const needs = editable && (s.key === 'documents' ? readiness?.missing_documents?.length > 0
+            : readiness?.sections?.[s.key])
           return (
             <li key={s.key} className={s.key === current ? 'current' : undefined}>
               <Link to={`/scholarships/${id}/${s.key}`} aria-current={s.key === current ? 'step' : undefined}
@@ -126,7 +111,7 @@ export default function ApplicationWizard() {
     }
   }
 
-  const next = index < STEPS.length - 1 ? `/scholarships/${id}/${STEPS[index + 1].key}` : `/scholarships/${id}/review`
+  const next = index < STEPS.length - 1 ? `/scholarships/${id}/${STEPS[index + 1].key}` : `/scholarships/${id}/documents`
   const prev = index > 0 ? `/scholarships/${id}/${STEPS[index - 1].key}` : null
 
   return (

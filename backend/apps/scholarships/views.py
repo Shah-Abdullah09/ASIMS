@@ -50,6 +50,15 @@ class OpenCycleListView(ListAPIView):
         return ScholarshipCycle.objects.filter(is_active=True, opens_on__lte=today, closes_on__gte=today)
 
 
+class AllCycleListView(ListAPIView):
+    """Every scholarship cycle, newest first, for the staff review filters."""
+
+    permission_classes = [has_role(Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)]
+    serializer_class = CycleSerializer
+    pagination_class = None
+    queryset = ScholarshipCycle.objects.all()
+
+
 def stored_name(ext):
     """A name for storage; the upload path replaces it with a random one but keeps this extension."""
     return f'upload.{ext}'

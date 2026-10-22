@@ -227,3 +227,13 @@ def test_student_still_cannot_edit_after_a_decision(cycle, cs, officer):
     set_status(officer, app_id, 'rejected', 'Incomplete income proof.')
     assert student_api.patch(f'{STUDENT_BASE}{app_id}/sections/personal/', {'domicile': 'X'},
                              format='json').status_code == 403
+
+
+# ---------- cycles for the filter ----------
+
+def test_staff_see_every_cycle_for_filtering(cycle, cs, officer):
+    ScholarshipCycle.objects.create(name='Spring-26', opens_on='2026-02-01', closes_on='2026-03-01')
+    names = [c['name'] for c in officer.get('/api/v1/scholarships/cycles/').json()]
+    assert names == ['Fall-26', 'Spring-26']  # closed cycles included, newest first
+    student = client_for(make_user('s@gmail.com', dept=cs))
+    assert student.get('/api/v1/scholarships/cycles/').status_code == 403

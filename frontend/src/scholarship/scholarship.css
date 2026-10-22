@@ -171,3 +171,35 @@ table.calc tr.calc-total th, table.calc tr.calc-total td { font-weight: 600; bor
   .sheet { border: none; padding: 0; color: #000; }
   .reference { color: #000; }
 }
+
+/* staff review */
+.filters { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin: 16px 0; }
+.filters label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 500; color: var(--text-h); }
+.filters input[type='search'] { min-width: 260px; }
+.filters select { min-width: 150px; }
+@media (max-width: 600px) { .filters label, .filters input[type='search'], .filters select { width: 100%; min-width: 0; } }
+table.list-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.list-table th, .list-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+.list-table thead th { background: var(--code-bg); white-space: nowrap; }
+.list-table caption { text-align: left; font-weight: 600; padding: 6px 8px; }
+.text-ok { color: var(--ok); }
+.text-warn { color: var(--warn-text); }
+.jump { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 14px; margin: 10px 0 4px; }
+.review-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
+@media (max-width: 900px) { .review-layout { grid-template-columns: minmax(0, 1fr); } .review-side { order: -1; } }
+.review-side { position: sticky; top: 12px; }
+@media (max-width: 900px) { .review-side { position: static; } }
+.decision-panel { border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.decision-panel h2 { margin: 0; }
+.decision-panel h3 { margin: 12px 0 0; }
+.review-section { border-top: 1px solid var(--border); padding-top: 4px; scroll-margin-top: 12px; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; margin: 10px 0; }
+@media (max-width: 600px) { .facts { grid-template-columns: minmax(0, 1fr); } }
+.facts div { min-width: 0; }
+.facts .facts-wide { grid-column: 1 / -1; }
+.facts dt { font-size: 13px; color: var(--text); }
+.facts dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.prose { white-space: pre-wrap; overflow-wrap: anywhere; }
+.inline-field { display: inline-flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.inline-field input { width: auto; }
+div.person { border: 1px solid var(--border); border-radius: 8px; padding: 4px 14px; margin: 10px 0; }

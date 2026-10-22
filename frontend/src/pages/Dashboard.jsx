@@ -33,6 +33,11 @@ export default function Dashboard() {
           <Link to="/scholarships">Scholarship applications</Link>: apply for the Need Based Financial Grant or
           continue your application.
         </p>
+      ) : ['placement_officer', 'administrator'].includes(user.role) ? (
+        <p>
+          <Link to="/review">Review scholarship applications</Link>: submitted Need Based Financial Grant
+          applications, documents, Form 2 and decisions.
+        </p>
       ) : (
         <p>Your role-specific tools will appear here as each module is built.</p>
       )}

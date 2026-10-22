@@ -9,6 +9,7 @@ router.register('scholarships/review/applications', views.StaffApplicationViewSe
 
 urlpatterns = [
     path('scholarships/cycles/open/', views.OpenCycleListView.as_view(), name='open-cycles'),
+    path('scholarships/cycles/', views.AllCycleListView.as_view(), name='all-cycles'),
     path('scholarships/documents/<int:doc_id>/download/', views.DocumentDownloadView.as_view(),
          name='scholarship-document-download'),
     path('scholarships/declarations/<int:declaration_id>/scan/', views.DeclarationScanDownloadView.as_view(),

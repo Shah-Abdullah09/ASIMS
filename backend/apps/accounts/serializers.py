@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
+from django.core.validators import RegexValidator
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
@@ -19,8 +21,27 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'full_name', 'role', 'department', 'department_name',
-                  'is_email_verified']
+                  'registration_id', 'is_email_verified']
         read_only_fields = fields
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Fields a signed-in user may change on their own profile."""
+
+    registration_id = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=8,
+        validators=[
+            RegexValidator(r'^\d{6,8}$', 'Registration ID must be 6 to 8 digits.'),
+            UniqueValidator(User.objects.all(), message='This registration ID is already linked to another account.'),
+        ],
+    )
+
+    class Meta:
+        model = User
+        fields = ['full_name', 'registration_id']
+
+    def validate_registration_id(self, value):
+        return value or None  # blank clears it (several accounts may have none)
 
 
 class RegisterSerializer(serializers.Serializer):
@@ -75,7 +96,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'role', 'department', 'is_active',
+        fields = ['id', 'email', 'full_name', 'role', 'department', 'registration_id', 'is_active',
                   'is_email_verified', 'password', 'date_joined']
         read_only_fields = ['id', 'is_email_verified', 'date_joined']
 

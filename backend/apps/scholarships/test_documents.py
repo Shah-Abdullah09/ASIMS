@@ -210,9 +210,12 @@ def test_owner_can_download_their_file(api, app_id):
 
 
 @pytest.mark.parametrize('role', [Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR])
-def test_reviewing_staff_can_download_any_file(api, app_id, dept, role):
+def test_reviewing_staff_can_download_submitted_files_but_not_drafts(api, app_id, dept, role):
     url = post_file(api, app_id, 'domicile', upload('a.pdf', pdf_bytes())).json()['download_url']
-    assert client_for(make_user(f'{role}@au.edu.pk', role=role, dept=dept)).get(url).status_code == 200
+    staff = client_for(make_user(f'{role}@au.edu.pk', role=role, dept=dept))
+    assert staff.get(url).status_code == 404  # drafts are the student's own
+    Application.objects.filter(pk=app_id).update(status='placement_verification')
+    assert staff.get(url).status_code == 200
 
 
 @pytest.mark.parametrize('role', [Role.STUDENT, Role.DAC_MEMBER, Role.DIRECTOR, Role.FINANCE_OFFICER])

@@ -67,6 +67,12 @@ class Application(models.Model):
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
                                     related_name='reviewed_scholarship_applications')
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    # DAC interview, recorded before the DAC shortlists (remarks are internal, not shown to the student)
+    interview_date = models.DateField(null=True, blank=True)
+    interview_remarks = models.TextField(blank=True)
+    interview_recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                              on_delete=models.PROTECT, related_name='recorded_scholarship_interviews')
+    interview_recorded_at = models.DateTimeField(null=True, blank=True)
     # Share of the semester tuition fee: recommended by the DAC, may be changed by Director, Registrar or VC
     scholarship_percentage = models.PositiveSmallIntegerField(
         null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(100)])

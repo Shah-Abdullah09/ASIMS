@@ -310,9 +310,14 @@ def test_scan_download_permissions(api, app_id, officer, dept):
     assert api.get(url).status_code == 404  # nothing uploaded yet
     upload_scan(api, app_id, decl_id)
     assert api.get(url).status_code == 200
+    assert officer.get(url).status_code == 404  # still a draft
+    Application.objects.filter(pk=app_id).update(status='placement_verification')
     assert officer.get(url).status_code == 200
     assert client_for(make_user('other@gmail.com', dept=dept)).get(url).status_code == 404
-    assert client_for(make_user('dac@au.edu.pk', role=Role.DAC_MEMBER, dept=dept)).get(url).status_code == 404
+    dac = client_for(make_user('dac@au.edu.pk', role=Role.DAC_MEMBER, dept=dept))
+    assert dac.get(url).status_code == 404  # not in the DAC queue yet
+    Application.objects.filter(pk=app_id).update(status='dac_review')
+    assert dac.get(url).status_code == 200
     assert APIClient().get(url).status_code == 401
 
 

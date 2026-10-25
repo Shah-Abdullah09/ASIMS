@@ -20,6 +20,7 @@ from apps.audit.models import AuditAction
 from apps.documents.validation import inspect_upload
 from apps.workflow.engine import WorkflowError
 
+from .access import PLACEMENT, STAFF_ROLES, can_open, visible_cases
 from .checklist import build_checklist, max_files
 from .choices import ApplicationStatus, DocumentReview
 from .declarations import sync_declarations
@@ -27,19 +28,18 @@ from .models import Application, ApplicationDocument, Declaration, ScholarshipCy
 from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentReviewSerializer, DocumentSerializer,
-                          DocumentUploadSerializer, FlagCreateSerializer, ReceiveSerializer, ReviewListSerializer,
+                          DocumentUploadSerializer, FlagCreateSerializer, ForwardAllSerializer, InterviewSerializer,
+                          ReceiveSerializer, ReviewListSerializer,
                           SectionFlagSerializer, StaffApplicationDetailSerializer, scan_upload_allowed)
 from .submission import readiness
 from .verification import section_unlocked, slot_unlocked
-from .workflow import PLACEMENT, perform
+from .workflow import perform
 
 DETAIL_PREFETCH = ['household_members', 'studying_members', 'parents', 'earning_members', 'asset_income',
                    'utility_months', 'vehicles', 'land_holdings', 'asset_worth', 'education_records',
                    'previous_scholarships', 'status_history__changed_by', 'flags__flagged_by',
                    'flags__resolved_by']
 
-# Staff who may open any applicant's files (the review chain adds more roles in Phase 3)
-DOCUMENT_REVIEWER_ROLES = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
 
 LOCKED_MESSAGE = 'This application has been submitted and can no longer be changed.'
 SECTION_LOCKED = 'The Placement Office did not ask for changes to this section, so it stays as submitted.'
@@ -81,7 +81,7 @@ class OpenCycleListView(ListAPIView):
 class AllCycleListView(ListAPIView):
     """Every scholarship cycle, newest first, for the staff review filters."""
 
-    permission_classes = [has_role(Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)]
+    permission_classes = [has_role(*STAFF_ROLES)]
     serializer_class = CycleSerializer
     pagination_class = None
     queryset = ScholarshipCycle.objects.all()
@@ -311,17 +311,12 @@ class DocumentDownloadView(APIView):
 
     def get(self, request, doc_id):
         doc = get_object_or_404(ApplicationDocument.objects.select_related('application'), pk=doc_id)
-        is_owner = doc.application.student_id == request.user.pk
-        if not is_owner and request.user.role not in DOCUMENT_REVIEWER_ROLES:
+        if not can_open(request.user, doc.application):
             raise NotFound()  # do not reveal that the file exists
         response = FileResponse(doc.file.open('rb'), content_type=doc.content_type,
                                 filename=doc.original_name, as_attachment=False)
         response['Cache-Control'] = 'private, no-store'
         return response
-
-
-def _can_review(user):
-    return user.role in DOCUMENT_REVIEWER_ROLES
 
 
 class DeclarationScanDownloadView(APIView):
@@ -331,7 +326,7 @@ class DeclarationScanDownloadView(APIView):
 
     def get(self, request, declaration_id):
         declaration = get_object_or_404(Declaration.objects.select_related('application'), pk=declaration_id)
-        if declaration.application.student_id != request.user.pk and not _can_review(request.user):
+        if not can_open(request.user, declaration.application):
             raise NotFound()
         if not declaration.scan:
             raise NotFound('No scan has been uploaded yet.')
@@ -344,7 +339,7 @@ class DeclarationScanDownloadView(APIView):
 class DeclarationReceiveView(APIView):
     """Placement Office records (POST) or undoes (DELETE) receipt of the original stamp paper."""
 
-    permission_classes = [has_role(*DOCUMENT_REVIEWER_ROLES)]
+    permission_classes = [has_role(*PLACEMENT)]
 
     def _declaration(self, declaration_id):
         declaration = get_object_or_404(
@@ -374,20 +369,20 @@ class DeclarationReceiveView(APIView):
 
 
 class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    """Placement Office review of submitted applications (drafts are not shown).
+    """Staff work on submitted applications: each role sees the cases access.visible_cases gives it.
 
     Query parameters: cycle, department, status, complete (true/false), search (name, Registration ID,
     CNIC or email), ordering (submitted_at, -submitted_at, applicant_name)."""
 
-    permission_classes = [has_role(*DOCUMENT_REVIEWER_ROLES)]
+    permission_classes = [has_role(*STAFF_ROLES)]
     ORDERINGS = {'submitted_at', '-submitted_at', 'applicant_name', '-applicant_name'}
 
     def get_serializer_class(self):
         return ReviewListSerializer if self.action == 'list' else StaffApplicationDetailSerializer
 
     def get_queryset(self):
-        qs = (Application.objects.exclude(status=ApplicationStatus.DRAFT)
-              .select_related('cycle', 'student__department', 'reviewed_by')
+        qs = (visible_cases(self.request.user)
+              .select_related('cycle', 'student__department', 'reviewed_by', 'interview_recorded_by')
               .prefetch_related('declarations'))
         if self.action != 'list':
             return qs.prefetch_related(*DETAIL_PREFETCH, 'documents__uploaded_by')
@@ -421,7 +416,12 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
         if error := run_action(app.pk, data['action'], request.user, request, remarks=data['remarks'],
                                 percentage=data['percentage']):
             return error
-        detail = self.get_queryset().get(pk=app.pk)
+        detail = self.get_queryset().filter(pk=app.pk).first()
+        if detail is None:
+            # The case moved on out of this user's view (e.g. the DAC shortlisted it): confirm the new stage only
+            app.refresh_from_db(fields=['status'])
+            return Response({'id': app.pk, 'status': app.status, 'status_label': app.get_status_display(),
+                             'left_queue': True, 'available_actions': []})
         return Response(self.get_serializer(detail).data)
 
     # ---------- Placement verification ----------
@@ -483,3 +483,45 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
             record(AuditAction.FLAG_CLEARED, request=request, target=flag, application=app.pk,
                    section=flag.section)
         return Response(SectionFlagSerializer(flag).data)
+
+    # ---------- DAC ----------
+
+    @action(detail=True, methods=['put'], url_path='interview')
+    def interview(self, request, pk=None):
+        """DAC member of the student's department records (or corrects) the interview at DAC review."""
+        if request.user.role != Role.DAC_MEMBER:
+            raise PermissionDenied('Only a DAC member records the interview.')
+        serializer = InterviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            self.get_object()  # 404 unless the case is in this member's DAC queue
+            app = Application.objects.select_for_update().get(pk=pk)
+            if app.status != ApplicationStatus.DAC_REVIEW:
+                raise StageConflict('This case is no longer at DAC review. Reload the page.')
+            app.interview_date = serializer.validated_data['interview_date']
+            app.interview_remarks = serializer.validated_data['interview_remarks']
+            app.interview_recorded_by, app.interview_recorded_at = request.user, timezone.now()
+            app.save(update_fields=['interview_date', 'interview_remarks', 'interview_recorded_by',
+                                    'interview_recorded_at', 'updated_at'])
+            record(AuditAction.INTERVIEW_RECORDED, request=request, target=app,
+                   interview_date=str(app.interview_date), remarks=app.interview_remarks)
+        return Response(self.get_serializer(self.get_queryset().get(pk=pk)).data)
+
+    # ---------- forwarding ----------
+
+    @action(detail=False, methods=['post'], url_path='forward-all')
+    def forward_all(self, request):
+        """Forward every case awaiting forwarding (optionally of one cycle) to the Director.
+        Needs {"confirm": true}. Cases another person moved meanwhile are skipped and reported."""
+        if request.user.role not in PLACEMENT:
+            raise PermissionDenied('Only the Placement Office forwards cases.')
+        serializer = ForwardAllSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        waiting = visible_cases(request.user).filter(status=ApplicationStatus.AWAITING_FORWARDING)
+        if cycle := serializer.validated_data['cycle']:
+            waiting = waiting.filter(cycle=cycle)
+        forwarded, skipped = [], []
+        for app_id in waiting.order_by('submitted_at', 'pk').values_list('pk', flat=True):
+            error = run_action(app_id, 'forward', request.user, request, remarks='Forwarded with all shortlisted cases.')
+            (skipped if error else forwarded).append(app_id)
+        return Response({'forwarded': forwarded, 'skipped': skipped})

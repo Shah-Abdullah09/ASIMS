@@ -24,6 +24,7 @@ class AuditAction(models.TextChoices):
     DOCUMENT_REVIEWED = 'document_reviewed', 'Document reviewed'
     SECTION_FLAGGED = 'section_flagged', 'Section flagged'
     FLAG_CLEARED = 'flag_cleared', 'Flag cleared'
+    INTERVIEW_RECORDED = 'interview_recorded', 'DAC interview recorded'
     WORKFLOW_ACTION = 'workflow_action', 'Workflow action'
 
 

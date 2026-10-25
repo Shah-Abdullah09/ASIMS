@@ -1,5 +1,6 @@
 """The approval chain itself (workflow.perform). The role screens' APIs are tested with each role."""
 import pytest
+from django.utils import timezone
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from rest_framework.exceptions import ValidationError
@@ -34,6 +35,7 @@ def case(cycle, cs, officer):
     student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
     make_complete(student_api, officer, app_id)
     ApplicationDocument.objects.filter(application_id=app_id).update(review_status='verified')  # API: test_verification
+    Application.objects.filter(pk=app_id).update(interview_date=timezone.localdate())  # API: test_dac
     return app_id
 
 

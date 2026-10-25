@@ -15,10 +15,9 @@ from apps.audit.models import AuditAction
 from apps.workflow.engine import Transition, Workflow
 
 from .choices import ApplicationStatus as S
+from .access import PLACEMENT
 from .models import Application, StatusChange
 from .verification import check_returnable, check_verifiable, resolve_flags
-
-PLACEMENT = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
 
 
 def own_application(user, app):
@@ -59,7 +58,13 @@ STUDENT_ACTIONS = {'submit', 'resubmit'}
 
 
 # Extra conditions of a transition, keyed by (action, source stage). Each raises ValidationError.
+def check_interviewed(app):
+    if app.interview_date is None:
+        raise ValidationError({'action': 'Record the interview date and remarks before shortlisting.'})
+
+
 CHECKS = {
+    ('shortlist', S.DAC_REVIEW): check_interviewed,
     ('verify', S.PLACEMENT_VERIFICATION): check_verifiable,
     ('return', S.PLACEMENT_VERIFICATION): check_returnable,
 }

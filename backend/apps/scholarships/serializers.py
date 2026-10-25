@@ -368,9 +368,13 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     flags = SectionFlagSerializer(many=True, read_only=True)
     unlocked = serializers.SerializerMethodField()
 
+    # Staff notes the student does not see; the percentage is shown once the VC has approved it
+    PERCENTAGE_FINAL = {ApplicationStatus.AWAITING_FEE_ADJUSTMENT}
+    student_view = True
+
     class Meta:
         model = m.Application
-        exclude = ['student', 'reviewed_by']
+        exclude = ['student', 'reviewed_by', 'interview_remarks', 'interview_recorded_by', 'interview_recorded_at']
 
     def get_fields(self):
         fields = super().get_fields()
@@ -383,6 +387,14 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
 
     def get_completion(self, obj):
         return completion(obj)
+
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        if self.student_view and obj.status not in self.PERCENTAGE_FINAL:
+            data['scholarship_percentage'] = None
+            for change in data['status_history']:
+                change['percentage'] = None
+        return data
 
     def get_unlocked(self, obj) -> dict:
         """What the student may still change: None means everything (a draft)."""
@@ -494,6 +506,9 @@ class StaffApplicationDetailSerializer(ApplicationDetailSerializer):
     documents = serializers.SerializerMethodField()
     declarations = serializers.SerializerMethodField()
     available_actions = serializers.SerializerMethodField()
+    interview_recorded_by = serializers.CharField(source='interview_recorded_by.full_name', default=None,
+                                                  read_only=True)
+    student_view = False
 
     class Meta(ApplicationDetailSerializer.Meta):
         exclude = []
@@ -542,3 +557,30 @@ class FlagCreateSerializer(serializers.Serializer):
         if not value.strip():
             raise serializers.ValidationError('Say what needs correcting.')
         return value.strip()
+
+
+class InterviewSerializer(serializers.Serializer):
+    """The DAC interview: date (today or earlier) and remarks."""
+    interview_date = serializers.DateField()
+    interview_remarks = serializers.CharField(max_length=4000)
+
+    def validate_interview_date(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError('The interview date cannot be in the future.')
+        return value
+
+    def validate_interview_remarks(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('Write the interview remarks.')
+        return value.strip()
+
+
+class ForwardAllSerializer(serializers.Serializer):
+    confirm = serializers.BooleanField()
+    cycle = serializers.PrimaryKeyRelatedField(queryset=m.ScholarshipCycle.objects.all(), required=False,
+                                               allow_null=True, default=None)
+
+    def validate_confirm(self, value):
+        if not value:
+            raise serializers.ValidationError('Confirm that every shortlisted case should go to the Director.')
+        return value

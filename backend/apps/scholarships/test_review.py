@@ -91,9 +91,8 @@ def act(client, app_id, action, remarks='', **extra):
 
 # ---------- permissions ----------
 
-@pytest.mark.parametrize('role', [Role.STUDENT, Role.DIC, Role.FACULTY_SUPERVISOR, Role.DIRECTOR,
-                                  Role.REGISTRAR, Role.VICE_CHANCELLOR, Role.FINANCE_OFFICER])
-def test_roles_without_a_queue_cannot_review(cycle, cs, role):  # the DAC queue is tested in test_dac.py
+@pytest.mark.parametrize('role', [Role.STUDENT, Role.DIC, Role.FACULTY_SUPERVISOR, Role.FINANCE_OFFICER])
+def test_roles_without_a_queue_cannot_review(cycle, cs, role):  # DAC and approver queues: test_dac, test_approvals
     _, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
     client = client_for(make_user(f'{role}@au.edu.pk', role=role, dept=cs))
     assert client.get(REVIEW).status_code == 403

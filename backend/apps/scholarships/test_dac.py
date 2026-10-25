@@ -72,7 +72,7 @@ def test_dac_can_open_files_of_its_cases_only(ali, dac, dac_ee):
     assert dac.get(url).status_code == 404  # left the DAC queue
 
 
-@pytest.mark.parametrize('role', [Role.DIRECTOR, Role.FINANCE_OFFICER, Role.STUDENT])
+@pytest.mark.parametrize('role', [Role.FINANCE_OFFICER, Role.STUDENT])
 def test_other_roles_still_have_no_staff_queue(ali, cs, role):
     client = client_for(make_user(f'{role}.q@au.edu.pk', role=role, dept=cs))
     assert client.get(REVIEW).status_code == 403

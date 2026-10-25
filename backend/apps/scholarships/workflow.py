@@ -16,6 +16,7 @@ from apps.workflow.engine import Transition, Workflow
 
 from .choices import ApplicationStatus as S
 from .access import PLACEMENT
+from .emails import notify_student
 from .models import Application, StatusChange
 from .verification import check_returnable, check_verifiable, resolve_flags
 
@@ -113,9 +114,9 @@ def perform(app_id, action, user, *, remarks='', percentage=None, request=None):
             check(app)
 
         now = timezone.now()
-        StatusChange.objects.create(application=app, from_status=transition.source, to_status=transition.target,
-                                    action=transition.action, remarks=remarks, percentage=percentage,
-                                    changed_by=user, role=user.role)
+        change = StatusChange.objects.create(
+            application=app, from_status=transition.source, to_status=transition.target, action=transition.action,
+            remarks=remarks, percentage=percentage, changed_by=user, role=user.role)
         fields = ['status', 'updated_at']
         app.status = transition.target
         if transition.action == 'submit':
@@ -130,6 +131,7 @@ def perform(app_id, action, user, *, remarks='', percentage=None, request=None):
         app.save(update_fields=fields)
         if after := AFTER.get((transition.action, transition.source)):
             after(app, user)
+        transaction.on_commit(lambda: notify_student(app, change))
         record(AuditAction.WORKFLOW_ACTION, request=request, actor=user, target=app, action=transition.action,
                from_status=transition.source, to_status=transition.target, remarks=remarks, percentage=percentage)
     return app

@@ -18,6 +18,7 @@ from .calculations import summarize
 from .declarations import render, sync_declarations
 from .submission import completion
 from .validators import cnic_validator, landline_validator, mobile_validator
+from .verification import unlocked
 from .workflow import available_actions
 
 
@@ -344,6 +345,17 @@ class StatusChangeSerializer(serializers.ModelSerializer):
         return Role(obj.role).label if obj.role in Role.values else obj.role
 
 
+class SectionFlagSerializer(serializers.ModelSerializer):
+    section_label = serializers.CharField(source='get_section_display', read_only=True)
+    flagged_by = serializers.CharField(source='flagged_by.full_name', read_only=True)
+    resolved_by = serializers.CharField(source='resolved_by.full_name', default=None, read_only=True)
+
+    class Meta:
+        model = m.SectionFlag
+        fields = ['id', 'section', 'section_label', 'note', 'flagged_by', 'flagged_at', 'is_open', 'resolved_at',
+                  'resolved_by', 'resolution']
+
+
 class ApplicationDetailSerializer(serializers.ModelSerializer):
     cycle = CycleSerializer(read_only=True)
     department = serializers.CharField(source='student.department.name', default=None, read_only=True)
@@ -353,6 +365,8 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     summary = serializers.SerializerMethodField()
     completion = serializers.SerializerMethodField()
     status_history = StatusChangeSerializer(many=True, read_only=True)
+    flags = SectionFlagSerializer(many=True, read_only=True)
+    unlocked = serializers.SerializerMethodField()
 
     class Meta:
         model = m.Application
@@ -370,6 +384,10 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     def get_completion(self, obj):
         return completion(obj)
 
+    def get_unlocked(self, obj) -> dict:
+        """What the student may still change: None means everything (a draft)."""
+        return unlocked(obj)
+
 
 # ---------- documents ----------
 
@@ -378,11 +396,12 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     download_url = serializers.SerializerMethodField()
     uploaded_by = serializers.CharField(source='uploaded_by.full_name', read_only=True)
+    reviewed_by = serializers.CharField(source='reviewed_by.full_name', default=None, read_only=True)
 
     class Meta:
         model = m.ApplicationDocument
         fields = ['id', 'slot', 'original_name', 'content_type', 'size', 'uploaded_by', 'uploaded_at',
-                  'download_url']
+                  'download_url', 'review_status', 'review_note', 'reviewed_by', 'reviewed_at']
 
     def get_download_url(self, obj):
         return f'/api/v1/scholarships/documents/{obj.pk}/download/'
@@ -502,3 +521,24 @@ class ActionSerializer(serializers.Serializer):
     action = serializers.CharField(max_length=30)
     remarks = serializers.CharField(required=False, allow_blank=True, max_length=2000, default='')
     percentage = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+
+class DocumentReviewSerializer(serializers.Serializer):
+    review_status = serializers.ChoiceField(choices=m.DocumentReview.choices)
+    note = serializers.CharField(required=False, allow_blank=True, max_length=500, default='')
+
+    def validate(self, attrs):
+        attrs['note'] = attrs['note'].strip()
+        if attrs['review_status'] == m.DocumentReview.NEEDS_CLARIFICATION and not attrs['note']:
+            raise serializers.ValidationError({'note': 'Say what is unclear, so the student knows what to fix.'})
+        return attrs
+
+
+class FlagCreateSerializer(serializers.Serializer):
+    section = serializers.ChoiceField(choices=m.FlagSection.choices)
+    note = serializers.CharField(max_length=500)
+
+    def validate_note(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('Say what needs correcting.')
+        return value.strip()

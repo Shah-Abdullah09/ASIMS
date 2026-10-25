@@ -71,6 +71,20 @@ def make_complete(student_api, officer, app_id):
     officer.post(f'/api/v1/scholarships/declarations/{decl_id}/receive/', {}, format='json')
 
 
+def verify_documents(officer, app_id):
+    """Placement marks every uploaded file Verified."""
+    for slot in officer.get(f'{REVIEW}{app_id}/').json()['documents']:
+        for f in slot['files']:
+            response = officer.post(f"{REVIEW}{app_id}/documents/{f['id']}/review/", {'review_status': 'verified'},
+                                    format='json')
+            assert response.status_code == 200, response.json()
+
+
+def ready_for_dac(student_api, officer, app_id):
+    make_complete(student_api, officer, app_id)
+    verify_documents(officer, app_id)
+
+
 def act(client, app_id, action, remarks='', **extra):
     return client.post(f'{REVIEW}{app_id}/actions/', {'action': action, 'remarks': remarks, **extra}, format='json')
 
@@ -121,7 +135,7 @@ def test_list_shows_key_columns_and_completion(cycle, cs, officer):
 def three_applications(cycle, cs, ee, officer):
     """Ali (CS, complete, verified to DAC), Sara (CS, incomplete), Bilal (EE, incomplete, Spring cycle)."""
     ali_api, ali = submitted_application(cycle, cs, 'ali@gmail.com', 'Ali Khan', '233585', '36302-1234567-1')
-    make_complete(ali_api, officer, ali)
+    ready_for_dac(ali_api, officer, ali)
     assert act(officer, ali, 'verify').status_code == 200
     _, sara = submitted_application(cycle, cs, 'sara@gmail.com', 'Sara Ahmed', '2335901', '36302-7654321-2')
     spring = ScholarshipCycle.objects.create(name='Spring-27', opens_on=cycle.opens_on, closes_on=cycle.closes_on)
@@ -202,7 +216,7 @@ def test_verify_needs_a_complete_application(cycle, cs, officer):
     student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
     response = act(officer, app_id, 'verify')
     assert response.status_code == 400 and 'Form 2 scan' in str(response.json())
-    make_complete(student_api, officer, app_id)
+    ready_for_dac(student_api, officer, app_id)
     assert act(officer, app_id, 'verify', 'Documents checked.').json()['status'] == 'dac_review'
 
 

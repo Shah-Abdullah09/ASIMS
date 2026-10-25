@@ -5,7 +5,8 @@ import re
 
 from .calculations import summarize
 from .checklist import missing_slots
-from .choices import AccommodationStatus, AssetIncomeSource, EducationLevel, LifeStatus, ParentRole, Profession
+from .choices import (AccommodationStatus, ApplicationStatus, AssetIncomeSource, EducationLevel, LifeStatus,
+                      ParentRole, Profession)
 
 REQUIRED = 'This field is required.'
 MIN_STATEMENT = 100
@@ -144,7 +145,8 @@ def readiness(app):
     sections = {name: errors for name, check in CHECKS if (errors := check(app))}
     documents = [slot.value for slot in missing_slots(app)]
     problems = []
-    if not app.cycle.is_open():
+    # The deadline applies to the first submission; a returned application may be resubmitted later
+    if app.status == ApplicationStatus.DRAFT and not app.cycle.is_open():
         problems.append(f'The {app.cycle.name} cycle is closed for applications.')
     return {
         'ready': not sections and not documents and not problems,

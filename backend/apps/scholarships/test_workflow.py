@@ -8,7 +8,7 @@ from apps.accounts.models import Role
 from apps.audit.models import AuditAction, AuditLog
 from apps.workflow.engine import WorkflowError
 
-from .models import Application, StatusChange
+from .models import Application, ApplicationDocument, SectionFlag, StatusChange
 from .test_review import cs, cycle, ee, make_complete, make_user, officer, submitted_application, temp_media  # noqa: F401
 from .workflow import CHAIN, available_actions, perform
 
@@ -30,9 +30,10 @@ def people(cs, ee):
 
 @pytest.fixture
 def case(cycle, cs, officer):
-    """A complete CS application at Placement verification."""
+    """A complete CS application at Placement verification, every file verified."""
     student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
     make_complete(student_api, officer, app_id)
+    ApplicationDocument.objects.filter(application_id=app_id).update(review_status='verified')  # API: test_verification
     return app_id
 
 
@@ -149,6 +150,8 @@ def test_rejection_needs_remarks_and_ends_the_case(case, people, who, action):
 
 
 def test_return_needs_remarks_and_only_the_owner_resubmits(case, people, cs):
+    SectionFlag.objects.create(application_id=case, section='income', note='Net pay missing.',
+                               flagged_by=people['placement'])
     with pytest.raises(ValidationError):
         perform(case, 'return', people['placement'])
     perform(case, 'return', people['placement'], remarks='Bank statement is unreadable.')

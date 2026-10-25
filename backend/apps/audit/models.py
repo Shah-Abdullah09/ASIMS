@@ -21,6 +21,9 @@ class AuditAction(models.TextChoices):
     SCAN_UPLOADED = 'scan_uploaded', 'Form 2 scan uploaded'
     ORIGINAL_RECEIVED = 'original_received', 'Form 2 original received'
     ORIGINAL_UNRECEIVED = 'original_unreceived', 'Form 2 receipt undone'
+    DOCUMENT_REVIEWED = 'document_reviewed', 'Document reviewed'
+    SECTION_FLAGGED = 'section_flagged', 'Section flagged'
+    FLAG_CLEARED = 'flag_cleared', 'Flag cleared'
     WORKFLOW_ACTION = 'workflow_action', 'Workflow action'
 
 

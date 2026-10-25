@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.documents.paths import declaration_scan_path, scholarship_document_path
 
 from .choices import (PROFESSION_TEMPLATE, AccommodationStatus, AccommodationType, ApplicationStatus,
-                      DeclarationTemplate,
+                      DeclarationTemplate, DocumentReview, FlagSection,
                       AssetIncomeSource, AssetTitle, Division, DocumentSlot, EducationLevel, Gender,
                       LandCategory, LifeStatus, MaritalStatus, ParentRole, Profession, Relationship,
                       RentPaidBy, RoomRange, TransportType)
@@ -356,12 +356,21 @@ class ApplicationDocument(models.Model):
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                     related_name='uploaded_scholarship_documents')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    # Placement verification; cleared when the student replaces the file
+    review_status = models.CharField(max_length=20, choices=DocumentReview.choices, blank=True)
+    review_note = models.CharField(max_length=500, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+                                    related_name='reviewed_scholarship_documents')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['slot', 'uploaded_at']
 
     def __str__(self):
         return f'{self.get_slot_display()} - {self.original_name}'
+
+    def clear_review(self):
+        self.review_status, self.review_note, self.reviewed_by, self.reviewed_at = '', '', None, None
 
 
 class Declaration(models.Model):
@@ -388,6 +397,39 @@ class Declaration(models.Model):
     @property
     def is_complete(self):
         return bool(self.scan) and self.physical_received_on is not None
+
+
+class SectionFlag(models.Model):
+    """A part of the form Placement asks the student to correct. Open until the student resubmits
+    or Placement clears it; closed flags are kept as history."""
+
+    FIXED_BY_STUDENT = 'resubmitted'
+    CLEARED_BY_STAFF = 'cleared'
+
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='flags')
+    section = models.CharField(max_length=20, choices=FlagSection.choices)
+    note = models.CharField(max_length=500)
+    flagged_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                   related_name='scholarship_flags')
+    flagged_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+                                    related_name='resolved_scholarship_flags')
+    resolution = models.CharField(max_length=20, blank=True,
+                                  choices=[(FIXED_BY_STUDENT, 'Resubmitted by the student'),
+                                           (CLEARED_BY_STAFF, 'Cleared by the Placement Office')])
+
+    class Meta:
+        ordering = ['flagged_at', 'pk']
+        constraints = [models.UniqueConstraint(fields=['application', 'section'], condition=Q(resolved_at__isnull=True),
+                                               name='one_open_flag_per_section')]
+
+    def __str__(self):
+        return f'#{self.application_id} {self.get_section_display()}: {self.note}'
+
+    @property
+    def is_open(self):
+        return self.resolved_at is None
 
 
 class StatusChange(models.Model):

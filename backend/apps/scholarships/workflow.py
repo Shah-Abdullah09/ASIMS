@@ -16,7 +16,7 @@ from apps.workflow.engine import Transition, Workflow
 
 from .choices import ApplicationStatus as S
 from .models import Application, StatusChange
-from .submission import completion
+from .verification import check_returnable, check_verifiable, resolve_flags
 
 PLACEMENT = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
 
@@ -58,18 +58,15 @@ PERCENTAGE = {'shortlist': 'required', 'approve': 'optional'}
 STUDENT_ACTIONS = {'submit', 'resubmit'}
 
 
-def check_complete(app):
-    state = completion(app)
-    if not state['complete']:
-        missing = [label for key, label in (('scans_uploaded', 'Form 2 scan(s)'),
-                                            ('physical_copies_received', 'original stamp paper(s)'))
-                   if not state[key]]
-        raise ValidationError({'action': f'The application is not complete yet. Missing: {", ".join(missing)}.'})
-
-
 # Extra conditions of a transition, keyed by (action, source stage). Each raises ValidationError.
 CHECKS = {
-    ('verify', S.PLACEMENT_VERIFICATION): check_complete,
+    ('verify', S.PLACEMENT_VERIFICATION): check_verifiable,
+    ('return', S.PLACEMENT_VERIFICATION): check_returnable,
+}
+
+# Follow-up work done in the same transaction after a transition, keyed the same way: (app, user)
+AFTER = {
+    ('resubmit', S.RETURNED): resolve_flags,
 }
 
 
@@ -126,6 +123,8 @@ def perform(app_id, action, user, *, remarks='', percentage=None, request=None):
             app.scholarship_percentage = percentage
             fields.append('scholarship_percentage')
         app.save(update_fields=fields)
+        if after := AFTER.get((transition.action, transition.source)):
+            after(app, user)
         record(AuditAction.WORKFLOW_ACTION, request=request, actor=user, target=app, action=transition.action,
                from_status=transition.source, to_status=transition.target, remarks=remarks, percentage=percentage)
     return app

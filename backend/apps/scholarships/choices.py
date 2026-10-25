@@ -16,6 +16,26 @@ class ApplicationStatus(models.TextChoices):
     REJECTED = 'rejected', 'Rejected'
 
 
+class DocumentReview(models.TextChoices):
+    """Placement Office check of one uploaded file. Empty means not reviewed yet."""
+    VERIFIED = 'verified', 'Verified'
+    NEEDS_CLARIFICATION = 'needs_clarification', 'Needs clarification'
+
+
+class FlagSection(models.TextChoices):
+    """Parts of the application Placement can flag when returning it (the wizard sections plus Form 2)."""
+    PERSONAL = 'personal', 'Personal details'
+    HOUSEHOLD = 'household', 'Family'
+    PARENTS = 'parents', 'Parents & guardian'
+    INCOME = 'income', 'Income'
+    ACCOMMODATION = 'accommodation', 'Accommodation'
+    EXPENSES = 'expenses', 'Expenditure'
+    ASSETS = 'assets', 'Assets & financing'
+    EDUCATION = 'education', 'Education'
+    UNDERTAKING = 'undertaking', 'Undertaking'
+    FORM2 = 'form2', 'Form 2 scan'
+
+
 class Gender(models.TextChoices):
     MALE = 'male', 'Male'
     FEMALE = 'female', 'Female'

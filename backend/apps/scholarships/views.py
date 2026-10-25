@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied, ValidationError
 from rest_framework.generics import ListAPIView
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -15,29 +15,43 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import Role
 from apps.accounts.permissions import has_role
+from apps.audit.log import record
+from apps.audit.models import AuditAction
 from apps.documents.validation import inspect_upload
 from apps.workflow.engine import WorkflowError
 
 from .checklist import build_checklist, max_files
-from .choices import ApplicationStatus
+from .choices import ApplicationStatus, DocumentReview
 from .declarations import sync_declarations
-from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle
+from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle, SectionFlag
 from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
-                          DocumentReplaceSerializer, DocumentSerializer, DocumentUploadSerializer,
-                          ReceiveSerializer, ReviewListSerializer, StaffApplicationDetailSerializer,
-                          scan_upload_allowed)
+                          DocumentReplaceSerializer, DocumentReviewSerializer, DocumentSerializer,
+                          DocumentUploadSerializer, FlagCreateSerializer, ReceiveSerializer, ReviewListSerializer,
+                          SectionFlagSerializer, StaffApplicationDetailSerializer, scan_upload_allowed)
 from .submission import readiness
-from .workflow import perform
+from .verification import section_unlocked, slot_unlocked
+from .workflow import PLACEMENT, perform
 
 DETAIL_PREFETCH = ['household_members', 'studying_members', 'parents', 'earning_members', 'asset_income',
                    'utility_months', 'vehicles', 'land_holdings', 'asset_worth', 'education_records',
-                   'previous_scholarships', 'status_history__changed_by']
+                   'previous_scholarships', 'status_history__changed_by', 'flags__flagged_by',
+                   'flags__resolved_by']
 
 # Staff who may open any applicant's files (the review chain adds more roles in Phase 3)
 DOCUMENT_REVIEWER_ROLES = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
 
 LOCKED_MESSAGE = 'This application has been submitted and can no longer be changed.'
+SECTION_LOCKED = 'The Placement Office did not ask for changes to this section, so it stays as submitted.'
+SLOT_LOCKED = 'The Placement Office did not ask for changes to this document, so it stays as submitted.'
+VERIFIED_LOCKED = 'This file has been verified by the Placement Office and cannot be changed.'
+CHANGEABLE = (ApplicationStatus.DRAFT, ApplicationStatus.RETURNED)
+
+
+class StageConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = 'This case is no longer at Placement verification. Reload the page.'
+    default_code = 'stage_conflict'
 
 WORKFLOW_ERROR_STATUS = {'unknown_action': status.HTTP_400_BAD_REQUEST, 'forbidden': status.HTTP_403_FORBIDDEN,
                          'stage_conflict': status.HTTP_409_CONFLICT}
@@ -107,7 +121,9 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         serializer_class = SECTIONS.get(section)
         if serializer_class is None:
             raise NotFound(f'Unknown section "{section}". Valid sections: {", ".join(SECTIONS)}.')
-        app = self._editable_app()
+        app = self._changeable_app()
+        if not section_unlocked(app, section):
+            raise PermissionDenied(SECTION_LOCKED)
         serializer = serializer_class(app, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -121,10 +137,12 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         if request.method == 'GET':
             return Response(build_checklist(self.get_object(), DocumentSerializer))
 
-        app = self._editable_app()
+        app = self._changeable_app()
         serializer = DocumentUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         slot, upload = serializer.validated_data['slot'], serializer.validated_data['file']
+        if not slot_unlocked(app, slot):
+            raise PermissionDenied(SLOT_LOCKED)
         limit = max_files(slot)
         if app.documents.filter(slot=slot).count() >= limit:
             raise ValidationError({'file': f'This slot already has the maximum of {limit} files. '
@@ -139,9 +157,14 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
 
     @action(detail=True, methods=['put', 'delete'], url_path=r'documents/(?P<doc_id>\d+)')
     def document_detail(self, request, pk=None, doc_id=None):
-        """PUT: replace the file in place (same slot). DELETE: remove it. Drafts only."""
-        app = self._editable_app()
+        """PUT: replace the file in place (same slot). DELETE: remove it. Drafts, and the slots a returned
+        application reopened (verified files excepted)."""
+        app = self._changeable_app()
         doc = get_object_or_404(app.documents, pk=doc_id)
+        if not slot_unlocked(app, doc.slot):
+            raise PermissionDenied(SLOT_LOCKED)
+        if app.status == ApplicationStatus.RETURNED and doc.review_status == DocumentReview.VERIFIED:
+            raise PermissionDenied(VERIFIED_LOCKED)
         if request.method == 'DELETE':
             with transaction.atomic():
                 doc.delete()
@@ -158,6 +181,7 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         doc.file = upload
         doc.content_type, doc.size = content_type, upload.size
         doc.uploaded_by, doc.uploaded_at = request.user, timezone.now()
+        doc.clear_review()  # a new file has to be checked again
         with transaction.atomic():
             doc.save()
             transaction.on_commit(lambda: storage.delete(old_name))
@@ -184,6 +208,25 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
                 return error
         app = self._fresh(app)
         self._send_confirmation(app)
+        return Response(ApplicationDetailSerializer(self._fresh(app)).data)
+
+    @action(detail=True, methods=['post'])
+    def resubmit(self, request, pk=None):
+        """Send a returned application back to the Placement Office after fixing what was flagged.
+        Optional {remarks} tells the office what was changed."""
+        app = self.get_object()
+        if app.status != ApplicationStatus.RETURNED:
+            raise PermissionDenied('Only an application returned to you can be resubmitted.')
+        result = readiness(app)
+        if not result['ready']:
+            return Response({'detail': 'The application is not complete yet.', **result},
+                            status=status.HTTP_400_BAD_REQUEST)
+        remarks = str(request.data.get('remarks', '')).strip()[:2000] or 'Resubmitted by the student.'
+        with transaction.atomic():
+            sync_declarations(app)
+            if error := run_action(app.pk, 'resubmit', request.user, request, remarks=remarks):
+                transaction.set_rollback(True)
+                return error
         return Response(ApplicationDetailSerializer(self._fresh(app)).data)
 
     @staticmethod
@@ -250,6 +293,13 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
             raise PermissionDenied(LOCKED_MESSAGE)
         return app
 
+    def _changeable_app(self):
+        """A draft, or an application returned for corrections (callers check which parts reopened)."""
+        app = self.get_object()
+        if app.status not in CHANGEABLE:
+            raise PermissionDenied(LOCKED_MESSAGE)
+        return app
+
     def _fresh(self, app):
         return self.get_queryset().get(pk=app.pk)
 
@@ -301,6 +351,9 @@ class DeclarationReceiveView(APIView):
             Declaration.objects.select_related('application', 'parent', 'physical_received_by'), pk=declaration_id)
         if declaration.application.status == ApplicationStatus.DRAFT:
             raise ValidationError({'detail': 'The application has not been submitted yet.'})
+        if declaration.application.status not in (ApplicationStatus.PLACEMENT_VERIFICATION,
+                                                  ApplicationStatus.RETURNED):
+            raise ValidationError({'detail': 'The case has left Placement verification, so Form 2 receipts are final.'})
         return declaration
 
     def post(self, request, declaration_id):
@@ -370,3 +423,63 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
             return error
         detail = self.get_queryset().get(pk=app.pk)
         return Response(self.get_serializer(detail).data)
+
+    # ---------- Placement verification ----------
+
+    def _placement_case(self, pk):
+        """The case locked for a Placement verification change; only while it is at that stage."""
+        if self.request.user.role not in PLACEMENT:
+            raise PermissionDenied('Only the Placement Office can do this.')
+        self.get_object()  # 404 for drafts and cases outside this user's view
+        app = Application.objects.select_for_update().get(pk=pk)
+        if app.status != ApplicationStatus.PLACEMENT_VERIFICATION:
+            raise StageConflict()
+        return app
+
+    @action(detail=True, methods=['post'], url_path=r'documents/(?P<doc_id>\d+)/review')
+    def review_document(self, request, pk=None, doc_id=None):
+        """Mark one file Verified or Needs clarification (with a note the student sees)."""
+        serializer = DocumentReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            app = self._placement_case(pk)
+            doc = get_object_or_404(app.documents.select_related('uploaded_by'), pk=doc_id)
+            doc.review_status = serializer.validated_data['review_status']
+            doc.review_note = serializer.validated_data['note']
+            doc.reviewed_by, doc.reviewed_at = request.user, timezone.now()
+            doc.save(update_fields=['review_status', 'review_note', 'reviewed_by', 'reviewed_at'])
+            record(AuditAction.DOCUMENT_REVIEWED, request=request, target=doc, application=app.pk, slot=doc.slot,
+                   review_status=doc.review_status, note=doc.review_note)
+        return Response(DocumentSerializer(doc).data)
+
+    @action(detail=True, methods=['post'], url_path='flags')
+    def add_flag(self, request, pk=None):
+        """Flag a section for correction. Flagging an already flagged section updates its note."""
+        serializer = FlagCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        section, note = serializer.validated_data['section'], serializer.validated_data['note']
+        with transaction.atomic():
+            app = self._placement_case(pk)
+            flag = app.flags.filter(section=section, resolved_at__isnull=True).first()
+            if flag:
+                flag.note, flag.flagged_by = note, request.user
+                flag.save(update_fields=['note', 'flagged_by'])
+            else:
+                flag = SectionFlag.objects.create(application=app, section=section, note=note,
+                                                  flagged_by=request.user)
+            record(AuditAction.SECTION_FLAGGED, request=request, target=flag, application=app.pk, section=section,
+                   note=note)
+        return Response(SectionFlagSerializer(flag).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path=r'flags/(?P<flag_id>\d+)')
+    def clear_flag(self, request, pk=None, flag_id=None):
+        """Withdraw an open flag (kept in the history as cleared)."""
+        with transaction.atomic():
+            app = self._placement_case(pk)
+            flag = get_object_or_404(app.flags, pk=flag_id, resolved_at__isnull=True)
+            flag.resolved_at, flag.resolved_by = timezone.now(), request.user
+            flag.resolution = SectionFlag.CLEARED_BY_STAFF
+            flag.save(update_fields=['resolved_at', 'resolved_by', 'resolution'])
+            record(AuditAction.FLAG_CLEARED, request=request, target=flag, application=app.pk,
+                   section=flag.section)
+        return Response(SectionFlagSerializer(flag).data)

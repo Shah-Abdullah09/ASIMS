@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.scholarships',
     'apps.workflow',
+    'apps.audit',
     'apps.documents',
     'apps.notifications',
 ]

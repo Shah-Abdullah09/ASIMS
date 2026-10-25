@@ -125,7 +125,7 @@ def test_new_application_is_an_editable_draft_and_age_is_computed(cycle, dept):
     today = timezone.localdate()
     app.date_of_birth = today.replace(year=today.year - 20)
     assert app.age == 20
-    app.status = 'pending'
+    app.status = 'placement_verification'
     assert not app.is_editable
 
 

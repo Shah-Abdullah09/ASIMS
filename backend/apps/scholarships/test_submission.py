@@ -146,7 +146,7 @@ def test_complete_application_submits_locks_and_emails(api, app_id, student):
     response = api.post(f'{BASE}{app_id}/submit/')
     assert response.status_code == 200
     data = response.json()
-    assert data['status'] == 'pending' and data['submitted_at'] and not data['is_editable']
+    assert data['status'] == 'placement_verification' and data['submitted_at'] and not data['is_editable']
     assert data['completion'] == {'form_submitted': True, 'declarations_required': 1, 'scans_uploaded': False,
                                   'physical_copies_received': False, 'complete': False}
 

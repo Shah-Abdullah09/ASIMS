@@ -9,8 +9,8 @@ import ReviewList from './ReviewList.jsx'
 
 const ROW = (over = {}) => ({
   id: 7, applicant_name: 'Ali Khan', registration_id: '233585', cnic: '36302-1234567-1', email: 'ali@gmail.com',
-  department: 'Computer Science', cycle: 1, cycle_name: 'Fall-26', status: 'pending', submitted_at: '2026-10-20T09:00:00Z',
-  reviewed_at: null,
+  department: 'Computer Science', cycle: 1, cycle_name: 'Fall-26', status: 'placement_verification', submitted_at: '2026-10-20T09:00:00Z',
+  reviewed_at: null, scholarship_percentage: null,
   completion: { form_submitted: true, declarations_required: 1, scans_uploaded: false, physical_copies_received: false, complete: false },
   ...over,
 })
@@ -58,8 +58,13 @@ const DETAIL = (over = {}) => ({
     { slot: 'hostel_proof', label: '14. Hostel Fee Slip', kind: 'optional', required: false, missing: false, max_files: 5, reason: '', files: [] },
   ],
   declarations: [DECL],
-  status_history: [{ from_status: 'draft', to_status: 'pending', remarks: 'Submitted by the student.', changed_by: 'Ali Khan',
-    changed_by_role: 'Student', changed_at: '2026-10-20T09:00:00Z' }],
+  status_history: [{ from_status: 'draft', to_status: 'placement_verification', action: 'submit', percentage: null,
+    remarks: 'Submitted by the student.', changed_by: 'Ali Khan', changed_by_role: 'Student', changed_at: '2026-10-20T09:00:00Z' }],
+  available_actions: [
+    { action: 'verify', label: 'Verify and send to DAC', to_status: 'dac_review', remarks_required: false, percentage: null },
+    { action: 'return', label: 'Return to student', to_status: 'returned', remarks_required: true, percentage: null },
+    { action: 'reject', label: 'Reject', to_status: 'rejected', remarks_required: true, percentage: null },
+  ],
   summary: SUMMARY,
   ...over,
 })
@@ -103,7 +108,7 @@ afterEach(() => vi.restoreAllMocks())
 
 test('list shows submitted applications with completeness', async () => {
   mockApi([...LISTS, ['GET', '/review/applications/', () => ({ body: { count: 2, next: null, previous: null, results: [
-    ROW(), ROW({ id: 8, applicant_name: 'Sara Ahmed', status: 'approved',
+    ROW(), ROW({ id: 8, applicant_name: 'Sara Ahmed', status: 'dac_review',
       completion: { form_submitted: true, declarations_required: 1, scans_uploaded: true, physical_copies_received: true, complete: true } }),
   ] } })]])
   renderAt('/review')
@@ -118,13 +123,13 @@ test('filters, search and sorting go into the request and the address', async ()
   renderAt('/review')
   await screen.findByText('0 applications.')
   await userEvent.selectOptions(await screen.findByLabelText('Cycle'), '1')
-  await userEvent.selectOptions(screen.getByLabelText('Status'), 'under_review')
+  await userEvent.selectOptions(screen.getByLabelText('Status'), 'dac_review')
   await userEvent.selectOptions(screen.getByLabelText('Completeness'), 'false')
   await userEvent.type(screen.getByLabelText('Search'), '233585')
   await userEvent.click(screen.getByRole('button', { name: 'Search' }))
 
   const last = new URLSearchParams(listCalls().at(-1))
-  expect(Object.fromEntries(last)).toEqual({ cycle: '1', status: 'under_review', complete: 'false', search: '233585' })
+  expect(Object.fromEntries(last)).toEqual({ cycle: '1', status: 'dac_review', complete: 'false', search: '233585' })
   expect(await screen.findByText('0 applications match the filters.')).toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
@@ -178,40 +183,54 @@ test('a document opens through the protected link', async () => {
 })
 
 test('rejecting without remarks shows the server message beside remarks', async () => {
-  detailApi([['POST', '/status/', () => ({ status: 400, body: { remarks: ['Give the reason for rejecting, so the student knows why.'] } })]])
+  detailApi([['POST', '/actions/', () => ({ status: 400, body: { remarks: ['Remarks are required for this action, so the reason is on record.'] } })]])
   renderAt('/review/7')
-  await userEvent.selectOptions(await screen.findByLabelText('New status'), 'rejected')
-  expect(screen.getByText('* required to reject')).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Save decision' }))
+  await userEvent.selectOptions(await screen.findByLabelText('Action'), 'reject')
+  expect(screen.getByText('* required')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Reject' }))
   const remarks = screen.getByLabelText(/Remarks/)
-  expect(await screen.findByText('Give the reason for rejecting, so the student knows why.')).toBeInTheDocument()
+  expect(await screen.findByText('Remarks are required for this action, so the reason is on record.')).toBeInTheDocument()
   expect(remarks).toHaveAttribute('aria-invalid', 'true')
 })
 
-test('approving an incomplete application is explained before and after saving', async () => {
-  detailApi([['POST', '/status/', () => ({ status: 400, body: { status: ['The application is not complete yet. Missing: original stamp paper(s).'] } })]])
+test('verifying an incomplete application is explained before and after saving', async () => {
+  detailApi([['POST', '/actions/', () => ({ status: 400, body: { action: ['The application is not complete yet. Missing: original stamp paper(s).'] } })]])
   renderAt('/review/7')
-  await userEvent.selectOptions(await screen.findByLabelText('New status'), 'approved')
-  expect(screen.getByText(/Approval needs a complete application/)).toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Save decision' }))
-  expect(await screen.findByText(/not complete yet/)).toBeInTheDocument()
+  expect(await screen.findByText(/Verifying needs a complete application/)).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Verify and send to DAC' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('not complete yet')
 })
 
-test('a decision is saved with remarks and added to the history', async () => {
-  detailApi([['POST', '/status/', (body) => ({ body: DETAIL({
-    status: body.status, review_remarks: body.remarks, reviewed_by: 'Sana Placement', reviewed_at: '2026-10-23T09:00:00Z',
-    status_history: [...DETAIL().status_history, { from_status: 'pending', to_status: body.status, remarks: body.remarks,
-      changed_by: 'Sana Placement', changed_by_role: 'Placement Officer', changed_at: '2026-10-23T09:00:00Z' }],
+test('a percentage field appears only for actions that take one', async () => {
+  detailApi([])
+  renderAt('/review/7')
+  await screen.findByLabelText('Action')
+  expect(screen.queryByLabelText(/Scholarship percentage/)).not.toBeInTheDocument()
+})
+
+test('with no action at this stage the panel says so', async () => {
+  detailApi([], () => DETAIL({ available_actions: [], status: 'director_review' }))
+  renderAt('/review/7')
+  expect(await screen.findByText('You have no action at this stage.')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Action')).not.toBeInTheDocument()
+})
+
+test('an action is saved with remarks and added to the history', async () => {
+  detailApi([['POST', '/actions/', (body) => ({ body: DETAIL({
+    status: 'returned', review_remarks: body.remarks, reviewed_by: 'Sana Placement', reviewed_at: '2026-10-23T09:00:00Z',
+    available_actions: [],
+    status_history: [...DETAIL().status_history, { from_status: 'placement_verification', to_status: 'returned', action: 'return',
+      percentage: null, remarks: body.remarks, changed_by: 'Sana Placement', changed_by_role: 'Placement Officer', changed_at: '2026-10-23T09:00:00Z' }],
   }) })]])
   renderAt('/review/7')
-  await userEvent.selectOptions(await screen.findByLabelText('New status'), 'under_review')
-  await userEvent.type(screen.getByLabelText(/Remarks/), 'Checking the salary slip.')
-  await userEvent.click(screen.getByRole('button', { name: 'Save decision' }))
+  await userEvent.selectOptions(await screen.findByLabelText('Action'), 'return')
+  await userEvent.type(screen.getByLabelText(/Remarks/), 'Bank statement is unreadable.')
+  await userEvent.click(screen.getByRole('button', { name: 'Return to student' }))
 
-  expect(await screen.findByRole('status')).toHaveTextContent('Saved: Under review.')
-  expect(calls.find((c) => c.method === 'POST').body).toEqual({ status: 'under_review', remarks: 'Checking the salary slip.' })
+  expect(await screen.findByRole('status')).toHaveTextContent('Done: the case is now at "Returned to student".')
+  expect(calls.find((c) => c.method === 'POST').body).toEqual({ action: 'return', remarks: 'Bank statement is unreadable.' })
   const history = screen.getByRole('heading', { name: 'History' }).nextElementSibling
-  expect(within(history).getByText('Checking the salary slip.')).toBeInTheDocument()
+  expect(within(history).getByText('Bank statement is unreadable.')).toBeInTheDocument()
   expect(within(history).getByText(/Sana Placement \(Placement Officer\)/)).toBeInTheDocument()
 })
 

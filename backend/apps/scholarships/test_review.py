@@ -71,8 +71,8 @@ def make_complete(student_api, officer, app_id):
     officer.post(f'/api/v1/scholarships/declarations/{decl_id}/receive/', {}, format='json')
 
 
-def set_status(client, app_id, status, remarks=''):
-    return client.post(f'{REVIEW}{app_id}/status/', {'status': status, 'remarks': remarks}, format='json')
+def act(client, app_id, action, remarks='', **extra):
+    return client.post(f'{REVIEW}{app_id}/actions/', {'action': action, 'remarks': remarks, **extra}, format='json')
 
 
 # ---------- permissions ----------
@@ -84,7 +84,7 @@ def test_only_placement_office_and_admin_can_review(cycle, cs, role):
     client = client_for(make_user(f'{role}@au.edu.pk', role=role, dept=cs))
     assert client.get(REVIEW).status_code == 403
     assert client.get(f'{REVIEW}{app_id}/').status_code == 403
-    assert set_status(client, app_id, 'under_review').status_code == 403
+    assert act(client, app_id, 'reject', 'No.').status_code == 403
 
 
 def test_anonymous_gets_401(db):
@@ -112,17 +112,18 @@ def test_list_shows_key_columns_and_completion(cycle, cs, officer):
     _, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
     row = officer.get(REVIEW).json()['results'][0]
     assert row['id'] == app_id and row['applicant_name'] == 'Ali Khan' and row['registration_id'] == '233585'
-    assert row['department'] == 'Computer Science' and row['cycle_name'] == 'Fall-26' and row['status'] == 'pending'
+    assert row['department'] == 'Computer Science' and row['cycle_name'] == 'Fall-26'
+    assert row['status'] == 'placement_verification' and row['status_label'] == 'Placement verification'
     assert row['completion']['form_submitted'] and not row['completion']['complete']
 
 
 @pytest.fixture
 def three_applications(cycle, cs, ee, officer):
-    """Ali (CS, complete), Sara (CS, incomplete, under review), Bilal (EE, incomplete, Spring cycle)."""
+    """Ali (CS, complete, verified to DAC), Sara (CS, incomplete), Bilal (EE, incomplete, Spring cycle)."""
     ali_api, ali = submitted_application(cycle, cs, 'ali@gmail.com', 'Ali Khan', '233585', '36302-1234567-1')
     make_complete(ali_api, officer, ali)
+    assert act(officer, ali, 'verify').status_code == 200
     _, sara = submitted_application(cycle, cs, 'sara@gmail.com', 'Sara Ahmed', '2335901', '36302-7654321-2')
-    set_status(officer, sara, 'under_review')
     spring = ScholarshipCycle.objects.create(name='Spring-27', opens_on=cycle.opens_on, closes_on=cycle.closes_on)
     _, bilal = submitted_application(spring, ee, 'bilal@gmail.com', 'Bilal Raza', '24400012', '36302-1111222-3')
     return {'ali': ali, 'sara': sara, 'bilal': bilal, 'fall': cycle.pk, 'spring': spring.pk}
@@ -136,7 +137,8 @@ def test_filters(three_applications, officer, cs, ee):
     a = three_applications
     assert ids(officer, f"cycle={a['fall']}") == sorted([a['ali'], a['sara']])
     assert ids(officer, f"department={ee.pk}") == [a['bilal']]
-    assert ids(officer, 'status=under_review') == [a['sara']]
+    assert ids(officer, 'status=dac_review') == [a['ali']]
+    assert ids(officer, 'status=placement_verification') == sorted([a['sara'], a['bilal']])
     assert ids(officer, 'complete=true') == [a['ali']]
     assert ids(officer, 'complete=false') == sorted([a['sara'], a['bilal']])
     assert ids(officer, f"cycle={a['fall']}&complete=false") == [a['sara']]
@@ -164,67 +166,65 @@ def test_detail_has_answers_documents_declarations_and_history(cycle, cs, office
     domicile = next(d for d in data['documents'] if d['slot'] == 'domicile')
     assert len(domicile['files']) == 1 and officer.get(domicile['files'][0]['download_url']).status_code == 200
     assert data['declarations'][0]['person'] == 'Father'
-    assert data['status_history'][0]['to_status'] == 'pending'
-    assert data['status_history'][0]['remarks'] == 'Submitted by the student.'
+    first = data['status_history'][0]
+    assert (first['from_status'], first['to_status'], first['action']) == ('draft', 'placement_verification', 'submit')
+    assert first['remarks'] == 'Submitted by the student.' and first['changed_by_role'] == 'Student'
+    assert [a['action'] for a in data['available_actions']] == ['verify', 'return', 'reject']
 
 
-# ---------- status changes ----------
+# ---------- Placement actions (the full chain is tested in test_workflow.py) ----------
 
-def test_status_change_is_recorded_and_visible_to_the_student(cycle, cs, officer):
+def test_action_is_recorded_and_visible_to_the_student(cycle, cs, officer):
     student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
-    response = set_status(officer, app_id, 'under_review', 'Checking the salary slip.')
+    response = act(officer, app_id, 'reject', 'Family income above the limit.')
     assert response.status_code == 200
     data = response.json()
-    assert data['status'] == 'under_review' and data['review_remarks'] == 'Checking the salary slip.'
-    assert data['reviewed_by'] == 'Sana Placement' and data['reviewed_at']
+    assert data['status'] == 'rejected' and data['review_remarks'] == 'Family income above the limit.'
+    assert data['reviewed_by'] == 'Sana Placement' and data['reviewed_at'] and data['available_actions'] == []
 
     student_view = student_api.get(f'{STUDENT_BASE}{app_id}/').json()
-    assert student_view['status'] == 'under_review' and student_view['review_remarks'] == 'Checking the salary slip.'
+    assert student_view['status'] == 'rejected' and student_view['status_label'] == 'Rejected'
     history = student_view['status_history']
-    assert [(h['from_status'], h['to_status']) for h in history] == [('draft', 'pending'),
-                                                                      ('pending', 'under_review')]
+    assert [(h['from_status'], h['to_status']) for h in history] == [('draft', 'placement_verification'),
+                                                                      ('placement_verification', 'rejected')]
+    assert history[1]['action'] == 'reject' and history[1]['remarks'] == 'Family income above the limit.'
     assert history[1]['changed_by'] == 'Sana Placement' and history[1]['changed_by_role'] == 'Placement Officer'
 
 
 def test_rejection_needs_remarks(cycle, cs, officer):
     _, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
-    response = set_status(officer, app_id, 'rejected', '   ')
+    response = act(officer, app_id, 'reject', '   ')
     assert response.status_code == 400 and 'remarks' in response.json()
-    assert set_status(officer, app_id, 'rejected', 'Family income above the limit.').status_code == 200
+    assert act(officer, app_id, 'reject', 'Family income above the limit.').status_code == 200
 
 
-def test_approval_needs_a_complete_application(cycle, cs, officer):
+def test_verify_needs_a_complete_application(cycle, cs, officer):
     student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
-    response = set_status(officer, app_id, 'approved')
+    response = act(officer, app_id, 'verify')
     assert response.status_code == 400 and 'Form 2 scan' in str(response.json())
     make_complete(student_api, officer, app_id)
-    assert set_status(officer, app_id, 'approved', 'Eligible.').json()['status'] == 'approved'
+    assert act(officer, app_id, 'verify', 'Documents checked.').json()['status'] == 'dac_review'
 
 
-def test_decisions_can_be_corrected_and_every_change_is_kept(cycle, cs, officer):
+def test_unknown_or_out_of_stage_actions_are_refused(cycle, cs, officer):
     _, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
-    set_status(officer, app_id, 'rejected', 'Wrong file.')
-    assert set_status(officer, app_id, 'under_review', 'Rejected by mistake, reopening.').status_code == 200
-    assert StatusChange.objects.filter(application_id=app_id).count() == 3  # submit + 2 staff changes
+    assert act(officer, app_id, 'maybe').status_code == 400
+    response = act(officer, app_id, 'forward')  # forwarding comes after the DAC
+    assert response.status_code == 409 and response.json()['code'] == 'stage_conflict'
+    assert act(officer, app_id, 'submit').status_code == 409  # submitting starts from a draft
+    assert Application.objects.get(pk=app_id).status == 'placement_verification'
 
 
-def test_status_cannot_go_back_to_draft_or_be_unknown(cycle, cs, officer):
+def test_a_rejected_case_is_final(cycle, cs, officer):
     _, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
-    assert set_status(officer, app_id, 'draft').status_code == 400
-    assert set_status(officer, app_id, 'maybe').status_code == 400
-    assert Application.objects.get(pk=app_id).status == 'pending'
-
-
-def test_unchanged_status_and_remarks_is_rejected(cycle, cs, officer):
-    _, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
-    set_status(officer, app_id, 'under_review', 'Looking.')
-    assert set_status(officer, app_id, 'under_review', 'Looking.').status_code == 400
-    assert set_status(officer, app_id, 'under_review', 'Called the father.').status_code == 200  # new remark is fine
+    act(officer, app_id, 'reject', 'Wrong file.')
+    assert act(officer, app_id, 'verify').status_code == 409
+    assert StatusChange.objects.filter(application_id=app_id).count() == 2  # submit + reject
 
 
 def test_student_still_cannot_edit_after_a_decision(cycle, cs, officer):
     student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
-    set_status(officer, app_id, 'rejected', 'Incomplete income proof.')
+    act(officer, app_id, 'reject', 'Incomplete income proof.')
     assert student_api.patch(f'{STUDENT_BASE}{app_id}/sections/personal/', {'domicile': 'X'},
                              format='json').status_code == 403
 

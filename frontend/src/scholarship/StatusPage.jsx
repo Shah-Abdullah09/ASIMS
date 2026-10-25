@@ -29,7 +29,7 @@ export default function StatusPage() {
     },
   ].filter((x) => x.text)
 
-  const decided = app.status === 'approved' || app.status === 'rejected'
+  const decided = app.status === 'awaiting_fee_adjustment' || app.status === 'rejected'
 
   return (
     <main className="sch-page">
@@ -41,7 +41,7 @@ export default function StatusPage() {
       </p>
       {app.review_remarks && (
         <div className={decided ? 'decision' : 'notice'}>
-          <p><strong>Remarks from the Placement Office</strong></p>
+          <p><strong>Latest remarks{app.status === 'rejected' ? ' (reason for rejection)' : ''}</strong></p>
           <p>{app.review_remarks}</p>
         </div>
       )}
@@ -63,7 +63,7 @@ export default function StatusPage() {
       {app.status_history.length === 0 ? <p>Nothing has happened yet. Your application is still a draft.</p> : (
         <ol className="timeline">
           {app.status_history.map((h) => (
-            <li key={h.changed_at}>
+            <li key={`${h.changed_at}-${h.to_status}`}>
               <p><strong>{STATUS_LABELS[h.to_status]}</strong> <span className="field-hint">{when(h.changed_at)}, {h.changed_by_role}</span></p>
               {h.remarks && <p>{h.remarks}</p>}
             </li>

@@ -134,7 +134,7 @@ test('a file can be deleted after confirming', async () => {
 test('after submission documents can be viewed but not changed', async () => {
   mockApi([
     ['GET', '/applications/7/documents/', () => ({ body: [slot({ files: [FILE], missing: false })] })],
-    ['GET', '/scholarships/applications/7/', () => ({ body: app({ status: 'pending', is_editable: false, submitted_at: '2026-10-22T11:00:00Z' }) })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: app({ status: 'placement_verification', is_editable: false, submitted_at: '2026-10-22T11:00:00Z' }) })],
   ])
   renderAt('/scholarships/7/documents')
   expect(await screen.findByRole('button', { name: 'View' })).toBeInTheDocument()
@@ -209,7 +209,7 @@ test('once the office has the original, the scan is locked', async () => {
     ['GET', '/declarations/', () => ({ body: [{ ...DECLARATION, can_upload_scan: false, physical_received_on: '2026-10-21',
       physical_received_by: 'Sana Placement', scan: { original_name: 'stamp.jpg', size: 1000, uploaded_at: '2026-10-20T10:00:00Z',
         download_url: '/x' } }] })],
-    ['GET', '/scholarships/applications/7/', () => ({ body: app({ status: 'pending', is_editable: false, submitted_at: '2026-10-20T09:00:00Z' }) })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: app({ status: 'placement_verification', is_editable: false, submitted_at: '2026-10-20T09:00:00Z' }) })],
   ])
   renderAt('/scholarships/7/form2')
   expect(await screen.findByText(/Original received by the Placement Office on 21 Oct 2026 \(Sana Placement\)/)).toBeInTheDocument()
@@ -222,18 +222,18 @@ test('once the office has the original, the scan is locked', async () => {
 test('status page shows completion, decision remarks and the timeline', async () => {
   mockApi([
     ['GET', '/scholarships/applications/7/', () => ({ body: app({
-      status: 'under_review', is_editable: false, submitted_at: '2026-10-20T09:00:00Z',
+      status: 'placement_verification', is_editable: false, submitted_at: '2026-10-20T09:00:00Z',
       review_remarks: 'Please bring the original salary slip.',
       completion: { form_submitted: true, declarations_required: 1, scans_uploaded: true, physical_copies_received: false, complete: false },
       status_history: [
-        { from_status: 'draft', to_status: 'pending', remarks: 'Submitted by the student.', changed_by: 'Ali Khan', changed_by_role: 'Student', changed_at: '2026-10-20T09:00:00Z' },
-        { from_status: 'pending', to_status: 'under_review', remarks: 'Please bring the original salary slip.', changed_by: 'Sana', changed_by_role: 'Placement Officer', changed_at: '2026-10-21T09:00:00Z' },
+        { from_status: 'draft', to_status: 'placement_verification', remarks: 'Submitted by the student.', changed_by: 'Ali Khan', changed_by_role: 'Student', changed_at: '2026-10-20T09:00:00Z' },
+        { from_status: 'placement_verification', to_status: 'placement_verification', remarks: 'Please bring the original salary slip.', changed_by: 'Sana', changed_by_role: 'Placement Officer', changed_at: '2026-10-21T09:00:00Z' },
       ],
     }) })],
   ])
   renderAt('/scholarships/7/status')
   expect(await screen.findByRole('heading', { name: 'Application status' })).toBeInTheDocument()
-  expect(screen.getAllByText('Under review').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Placement verification').length).toBeGreaterThan(0)
   expect(screen.getAllByText('Please bring the original salary slip.').length).toBe(2) // remarks box + timeline
   expect(screen.getByText('Not yet. Complete the items still pending below.')).toBeInTheDocument()
   expect(screen.getByText('Application form submitted').closest('li')).toHaveClass('done')

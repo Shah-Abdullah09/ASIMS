@@ -189,7 +189,7 @@ def test_delete_removes_record_and_file(api, app_id, temp_media, django_capture_
 
 def test_files_are_locked_after_submission(api, app_id):
     doc_id = post_file(api, app_id, 'domicile', upload('a.pdf', pdf_bytes())).json()['id']
-    Application.objects.filter(pk=app_id).update(status='pending')
+    Application.objects.filter(pk=app_id).update(status='placement_verification')
     assert post_file(api, app_id, 'domicile', upload('b.pdf', pdf_bytes())).status_code == 403
     assert api.put(f'{BASE}{app_id}/documents/{doc_id}/', {'file': upload('c.pdf', pdf_bytes())},
                    format='multipart').status_code == 403

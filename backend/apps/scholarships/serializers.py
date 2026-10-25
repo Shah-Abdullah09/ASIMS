@@ -10,12 +10,15 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.accounts.models import Role
+
 from . import models as m
 from .choices import ApplicationStatus
 from .calculations import summarize
 from .declarations import render, sync_declarations
 from .submission import completion
 from .validators import cnic_validator, landline_validator, mobile_validator
+from .workflow import available_actions
 
 
 # ---------- normalising fields ----------
@@ -327,11 +330,18 @@ class ApplicationCreateSerializer(serializers.Serializer):
 
 class StatusChangeSerializer(serializers.ModelSerializer):
     changed_by = serializers.CharField(source='changed_by.full_name', read_only=True)
-    changed_by_role = serializers.CharField(source='changed_by.get_role_display', read_only=True)
+    changed_by_role = serializers.SerializerMethodField()
+    from_label = serializers.CharField(source='get_from_status_display', read_only=True)
+    to_label = serializers.CharField(source='get_to_status_display', read_only=True)
 
     class Meta:
         model = m.StatusChange
-        fields = ['from_status', 'to_status', 'remarks', 'changed_by', 'changed_by_role', 'changed_at']
+        fields = ['from_status', 'from_label', 'to_status', 'to_label', 'action', 'remarks', 'percentage',
+                  'changed_by', 'changed_by_role', 'changed_at']
+
+    def get_changed_by_role(self, obj):
+        # The role held when acting; a person's role may change later
+        return Role(obj.role).label if obj.role in Role.values else obj.role
 
 
 class ApplicationDetailSerializer(serializers.ModelSerializer):
@@ -339,6 +349,7 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     department = serializers.CharField(source='student.department.name', default=None, read_only=True)
     age = serializers.IntegerField(read_only=True)
     is_editable = serializers.BooleanField(read_only=True)
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
     summary = serializers.SerializerMethodField()
     completion = serializers.SerializerMethodField()
     status_history = StatusChangeSerializer(many=True, read_only=True)
@@ -418,9 +429,14 @@ class DeclarationSerializer(serializers.ModelSerializer):
         return scan_upload_allowed(obj)
 
 
+# Stages in which the student may still upload or replace a Form 2 scan
+SCAN_STAGES = {ApplicationStatus.DRAFT, ApplicationStatus.PLACEMENT_VERIFICATION, ApplicationStatus.RETURNED}
+
+
 def scan_upload_allowed(declaration):
-    """Form 2 stays open after submission; a scan can no longer be replaced once the original is received."""
-    if declaration.application.status in (ApplicationStatus.APPROVED, ApplicationStatus.REJECTED):
+    """Form 2 stays open until Placement verifies the case; a scan can no longer be replaced once the
+    original is received."""
+    if declaration.application.status not in SCAN_STAGES:
         return False
     return not (declaration.scan and declaration.physical_received_on)
 
@@ -439,12 +455,13 @@ class ReceiveSerializer(serializers.Serializer):
 class ReviewListSerializer(serializers.ModelSerializer):
     cycle_name = serializers.CharField(source='cycle.name', read_only=True)
     department = serializers.CharField(source='student.department.name', default=None, read_only=True)
+    status_label = serializers.CharField(source='get_status_display', read_only=True)
     completion = serializers.SerializerMethodField()
 
     class Meta:
         model = m.Application
         fields = ['id', 'applicant_name', 'registration_id', 'cnic', 'email', 'department', 'cycle', 'cycle_name',
-                  'status', 'submitted_at', 'reviewed_at', 'completion']
+                  'status', 'status_label', 'scholarship_percentage', 'submitted_at', 'reviewed_at', 'completion']
 
     def get_completion(self, obj):
         return completion(obj)
@@ -457,9 +474,14 @@ class StaffApplicationDetailSerializer(ApplicationDetailSerializer):
     reviewed_by = serializers.CharField(source='reviewed_by.full_name', default=None, read_only=True)
     documents = serializers.SerializerMethodField()
     declarations = serializers.SerializerMethodField()
+    available_actions = serializers.SerializerMethodField()
 
     class Meta(ApplicationDetailSerializer.Meta):
         exclude = []
+
+    def get_available_actions(self, obj) -> list[dict]:
+        request = self.context.get('request')
+        return available_actions(request.user, obj) if request else []
 
     def get_student(self, obj):
         s = obj.student
@@ -475,28 +497,8 @@ class StaffApplicationDetailSerializer(ApplicationDetailSerializer):
                                      many=True).data
 
 
-REVIEW_STATUSES = [ApplicationStatus.PENDING, ApplicationStatus.UNDER_REVIEW, ApplicationStatus.APPROVED,
-                   ApplicationStatus.REJECTED]
-
-
-class StatusUpdateSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(choices=[(s.value, s.label) for s in REVIEW_STATUSES])
-    remarks = serializers.CharField(required=False, allow_blank=True, max_length=2000)
-
-    def validate(self, attrs):
-        app = self.context['application']
-        remarks = attrs.get('remarks', '').strip()
-        if attrs['status'] == ApplicationStatus.REJECTED and not remarks:
-            raise serializers.ValidationError({'remarks': 'Give the reason for rejecting, so the student knows why.'})
-        if attrs['status'] == ApplicationStatus.APPROVED:
-            state = completion(app)
-            if not state['complete']:
-                missing = [label for key, label in (('scans_uploaded', 'Form 2 scan(s)'),
-                                                    ('physical_copies_received', 'original stamp paper(s)'))
-                           if not state[key]]
-                raise serializers.ValidationError(
-                    {'status': f'The application is not complete yet. Missing: {", ".join(missing)}.'})
-        if attrs['status'] == app.status and remarks == app.review_remarks:
-            raise serializers.ValidationError({'status': 'Nothing changed.'})
-        attrs['remarks'] = remarks
-        return attrs
+class ActionSerializer(serializers.Serializer):
+    """A step along the approval chain; workflow.perform checks the rest (stage, role, remarks, percentage)."""
+    action = serializers.CharField(max_length=30)
+    remarks = serializers.CharField(required=False, allow_blank=True, max_length=2000, default='')
+    percentage = serializers.IntegerField(required=False, allow_null=True, default=None)

@@ -16,17 +16,19 @@ from rest_framework.views import APIView
 from apps.accounts.models import Role
 from apps.accounts.permissions import has_role
 from apps.documents.validation import inspect_upload
+from apps.workflow.engine import WorkflowError
 
 from .checklist import build_checklist, max_files
 from .choices import ApplicationStatus
 from .declarations import sync_declarations
-from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle, StatusChange
-from .serializers import (SECTIONS, ApplicationCreateSerializer, ApplicationDetailSerializer,
+from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle
+from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentSerializer, DocumentUploadSerializer,
                           ReceiveSerializer, ReviewListSerializer, StaffApplicationDetailSerializer,
-                          StatusUpdateSerializer, scan_upload_allowed)
+                          scan_upload_allowed)
 from .submission import readiness
+from .workflow import perform
 
 DETAIL_PREFETCH = ['household_members', 'studying_members', 'parents', 'earning_members', 'asset_income',
                    'utility_months', 'vehicles', 'land_holdings', 'asset_worth', 'education_records',
@@ -36,6 +38,18 @@ DETAIL_PREFETCH = ['household_members', 'studying_members', 'parents', 'earning_
 DOCUMENT_REVIEWER_ROLES = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
 
 LOCKED_MESSAGE = 'This application has been submitted and can no longer be changed.'
+
+WORKFLOW_ERROR_STATUS = {'unknown_action': status.HTTP_400_BAD_REQUEST, 'forbidden': status.HTTP_403_FORBIDDEN,
+                         'stage_conflict': status.HTTP_409_CONFLICT}
+
+
+def run_action(app_id, action, user, request, **data):
+    """Run a workflow action; returns an error Response, or None when it succeeded."""
+    try:
+        perform(app_id, action, user, request=request, **data)
+    except WorkflowError as exc:
+        return Response({'detail': exc.message, 'code': exc.code}, status=WORKFLOW_ERROR_STATUS[exc.code])
+    return None
 
 
 class OpenCycleListView(ListAPIView):
@@ -165,12 +179,10 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
                             status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             sync_declarations(app)
-            app.status = ApplicationStatus.PENDING
-            app.submitted_at = timezone.now()
-            app.save(update_fields=['status', 'submitted_at', 'updated_at'])
-            StatusChange.objects.create(application=app, from_status=ApplicationStatus.DRAFT,
-                                        to_status=ApplicationStatus.PENDING, remarks='Submitted by the student.',
-                                        changed_by=request.user)
+            if error := run_action(app.pk, 'submit', request.user, request, remarks='Submitted by the student.'):
+                transaction.set_rollback(True)
+                return error
+        app = self._fresh(app)
         self._send_confirmation(app)
         return Response(ApplicationDetailSerializer(self._fresh(app)).data)
 
@@ -345,17 +357,16 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
         ordering = params.get('ordering', '-submitted_at')
         return qs.order_by(ordering if ordering in self.ORDERINGS else '-submitted_at', 'pk')
 
-    @action(detail=True, methods=['post'], url_path='status')
-    def set_status(self, request, pk=None):
-        """Set pending / under review / approved / rejected with remarks. Every change is recorded."""
+    @action(detail=True, methods=['post'], url_path='actions')
+    def take_action(self, request, pk=None):
+        """Move the case along the approval chain: {action, remarks, percentage}. The detail lists the
+        actions open to the current user in `available_actions`. Every action is recorded."""
         app = self.get_object()
-        serializer = StatusUpdateSerializer(data=request.data, context={'application': app})
+        serializer = ActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        new_status, remarks = serializer.validated_data['status'], serializer.validated_data['remarks']
-        with transaction.atomic():
-            StatusChange.objects.create(application=app, from_status=app.status, to_status=new_status,
-                                        remarks=remarks, changed_by=request.user)
-            app.status, app.review_remarks = new_status, remarks
-            app.reviewed_by, app.reviewed_at = request.user, timezone.now()
-            app.save(update_fields=['status', 'review_remarks', 'reviewed_by', 'reviewed_at', 'updated_at'])
-        return Response(StaffApplicationDetailSerializer(self.get_queryset().get(pk=app.pk)).data)
+        data = serializer.validated_data
+        if error := run_action(app.pk, data['action'], request.user, request, remarks=data['remarks'],
+                                percentage=data['percentage']):
+            return error
+        detail = self.get_queryset().get(pk=app.pk)
+        return Response(self.get_serializer(detail).data)

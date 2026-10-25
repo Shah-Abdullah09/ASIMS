@@ -180,7 +180,7 @@ test('education months are sent as the first day of the month', async () => {
 
 test('a submitted application is read-only', async () => {
   mockApi([
-    ['GET', '/scholarships/applications/7/', () => ({ body: makeApp({ status: 'pending', is_editable: false, submitted_at: '2026-10-20T09:00:00Z' }) })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: makeApp({ status: 'placement_verification', is_editable: false, submitted_at: '2026-10-20T09:00:00Z' }) })],
   ])
   renderAt('/scholarships/7/personal')
   expect(await screen.findByText(/can no longer be changed/)).toBeInTheDocument()
@@ -205,7 +205,7 @@ test('review submits after confirmation when ready', async () => {
   mockApi([
     ['GET', '/readiness/', () => ({ body: { ready: true, sections: {}, missing_documents: [], problems: [] } })],
     ['GET', '/scholarships/applications/7/', () => ({ body: makeApp({ summary: { ...SUMMARY, total_monthly_income: 72000, net_monthly_disposable: 30000 } }) })],
-    ['POST', '/submit/', () => ({ body: makeApp({ status: 'pending', is_editable: false, submitted_at: '2026-10-22T11:00:00Z' }) })],
+    ['POST', '/submit/', () => ({ body: makeApp({ status: 'placement_verification', is_editable: false, submitted_at: '2026-10-22T11:00:00Z' }) })],
   ])
   renderAt('/scholarships/7/review')
   expect(await screen.findByText('Rs. 72,000')).toBeInTheDocument()

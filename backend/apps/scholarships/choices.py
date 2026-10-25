@@ -3,10 +3,16 @@ from django.db import models
 
 
 class ApplicationStatus(models.TextChoices):
+    """The stage of the approval chain an application is at (see workflow.py for who moves it on)."""
     DRAFT = 'draft', 'Draft'
-    PENDING = 'pending', 'Pending'
-    UNDER_REVIEW = 'under_review', 'Under review'
-    APPROVED = 'approved', 'Approved'
+    PLACEMENT_VERIFICATION = 'placement_verification', 'Placement verification'
+    RETURNED = 'returned', 'Returned to student'
+    DAC_REVIEW = 'dac_review', 'DAC review'
+    AWAITING_FORWARDING = 'awaiting_forwarding', 'Awaiting forwarding'
+    DIRECTOR_REVIEW = 'director_review', 'Director review'
+    REGISTRAR_REVIEW = 'registrar_review', 'Registrar review'
+    VC_REVIEW = 'vc_review', 'VC review'
+    AWAITING_FEE_ADJUSTMENT = 'awaiting_fee_adjustment', 'Awaiting fee adjustment'
     REJECTED = 'rejected', 'Rejected'
 
 

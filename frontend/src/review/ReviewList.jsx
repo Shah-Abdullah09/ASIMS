@@ -73,7 +73,7 @@ export default function ReviewList() {
           Status
           <select value={params.get('status') || ''} onChange={(e) => setFilter('status', e.target.value)}>
             <option value="">All statuses</option>
-            {['pending', 'under_review', 'approved', 'rejected'].map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+            {Object.keys(STATUS_LABELS).filter((s) => s !== 'draft').map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
           </select>
         </label>
         <label>

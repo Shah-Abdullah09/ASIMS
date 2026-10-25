@@ -122,7 +122,7 @@ def test_students_cannot_see_or_edit_each_others_applications(app_id, dept):
 
 
 def test_submitted_application_cannot_be_edited(api, app_id):
-    Application.objects.filter(pk=app_id).update(status='pending')
+    Application.objects.filter(pk=app_id).update(status='placement_verification')
     response = save(api, app_id, 'personal', {'domicile': 'Multan'})
     assert response.status_code == 403 and 'no longer be changed' in response.json()['detail']
 

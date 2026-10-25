@@ -58,10 +58,16 @@ export const DOCUMENT_LABELS = {
   result_cards: '18. Matriculation and Intermediate Result Cards',
 }
 
+/** Stages of the approval chain, in order. */
 export const STATUS_LABELS = {
   draft: 'Draft',
-  pending: 'Pending',
-  under_review: 'Under review',
-  approved: 'Approved',
+  placement_verification: 'Placement verification',
+  returned: 'Returned to student',
+  dac_review: 'DAC review',
+  awaiting_forwarding: 'Awaiting forwarding',
+  director_review: 'Director review',
+  registrar_review: 'Registrar review',
+  vc_review: 'VC review',
+  awaiting_fee_adjustment: 'Awaiting fee adjustment',
   rejected: 'Rejected',
 }

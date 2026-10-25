@@ -56,16 +56,20 @@ class Application(models.Model):
     cycle = models.ForeignKey(ScholarshipCycle, on_delete=models.PROTECT, related_name='applications')
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                 related_name='scholarship_applications')
-    status = models.CharField(max_length=20, choices=ApplicationStatus.choices, default=ApplicationStatus.DRAFT)
+    status = models.CharField('stage', max_length=30, choices=ApplicationStatus.choices,
+                              default=ApplicationStatus.DRAFT)
     submitted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Office review (pending / under review / approved / rejected); replaced by the workflow chain in Phase 3
+    # Latest staff action in the approval chain (the full record is in status_history)
     review_remarks = models.TextField(blank=True)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
                                     related_name='reviewed_scholarship_applications')
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    # Share of the semester tuition fee: recommended by the DAC, may be changed by Director, Registrar or VC
+    scholarship_percentage = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(100)])
 
     # A. Applicant (Q1-8). Name, email and registration ID are copied from the profile.
     registration_id = models.CharField(max_length=8, blank=True)
@@ -387,13 +391,17 @@ class Declaration(models.Model):
 
 
 class StatusChange(models.Model):
-    """Every status change of an application: submission by the student and decisions by staff."""
+    """Every move along the approval chain: who took which action, from which stage to which, and why."""
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='status_history')
-    from_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
-    to_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
+    from_status = models.CharField(max_length=30, choices=ApplicationStatus.choices)
+    to_status = models.CharField(max_length=30, choices=ApplicationStatus.choices)
+    action = models.CharField(max_length=30, blank=True, help_text='Workflow action, e.g. verify or approve')
     remarks = models.TextField(blank=True)
+    percentage = models.PositiveSmallIntegerField(null=True, blank=True,
+                                                  help_text='Scholarship % recommended or approved by this action')
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                    related_name='scholarship_status_changes')
+    role = models.CharField(max_length=30, blank=True, help_text='Role of the person at the time of the action')
     changed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

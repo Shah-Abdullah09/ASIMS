@@ -19,3 +19,8 @@ def scholarship_document_path(instance, filename):
 def declaration_scan_path(instance, filename):
     app = instance.application
     return f'scholarships/{app.student_id}/{app.pk}/declarations/{system_file_name(filename)}'
+
+
+def award_letter_path(instance, filename):
+    app = instance.application
+    return f'scholarships/{app.student_id}/{app.pk}/award-letter/{system_file_name(filename)}'

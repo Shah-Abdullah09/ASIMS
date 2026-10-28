@@ -130,7 +130,7 @@ table.calc tr.calc-total th, table.calc tr.calc-total td { font-weight: 600; bor
 .sch-page .link-button.neutral { color: var(--accent); }
 .chip { font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); white-space: nowrap; }
 .chip-warn { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
-.chip-ok, .chip-awaiting_fee_adjustment { color: var(--ok); border-color: var(--ok); }
+.chip-ok, .chip-awaiting_fee_adjustment, .chip-completed { color: var(--ok); border-color: var(--ok); }
 .chip-rejected { color: var(--error); border-color: var(--error); }
 .chip-returned { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
 .chip-draft, .chip-placement_verification, .chip-dac_review, .chip-awaiting_forwarding, .chip-director_review,

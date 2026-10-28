@@ -13,6 +13,7 @@ class ApplicationStatus(models.TextChoices):
     REGISTRAR_REVIEW = 'registrar_review', 'Registrar review'
     VC_REVIEW = 'vc_review', 'VC review'
     AWAITING_FEE_ADJUSTMENT = 'awaiting_fee_adjustment', 'Awaiting fee adjustment'
+    COMPLETED = 'completed', 'Completed'
     REJECTED = 'rejected', 'Rejected'
 
 

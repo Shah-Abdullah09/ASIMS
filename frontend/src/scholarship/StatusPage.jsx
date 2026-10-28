@@ -53,7 +53,7 @@ export default function StatusPage() {
     },
   ].filter((x) => x.text)
 
-  const approved = app.status === 'awaiting_fee_adjustment'
+  const approved = ['awaiting_fee_adjustment', 'completed'].includes(app.status)
   const rejected = app.status === 'rejected'
 
   return (

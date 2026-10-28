@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext.jsx'
+import { QUEUES } from '../review/roles.js'
 
 const ROLE_LABELS = {
   student: 'Student',
@@ -33,10 +34,9 @@ export default function Dashboard() {
           <Link to="/scholarships">Scholarship applications</Link>: apply for the Need Based Financial Grant or
           continue your application.
         </p>
-      ) : ['placement_officer', 'administrator'].includes(user.role) ? (
+      ) : QUEUES[user.role] ? (
         <p>
-          <Link to="/review">Review scholarship applications</Link>: submitted Need Based Financial Grant
-          applications, documents, Form 2 and decisions.
+          <Link to="/review">My work: {QUEUES[user.role].title}</Link>. {QUEUES[user.role].hint}
         </p>
       ) : (
         <p>Your role-specific tools will appear here as each module is built.</p>

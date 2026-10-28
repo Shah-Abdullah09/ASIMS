@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, openProtectedFile } from '../api.js'
+import { useAuth } from '../AuthContext.jsx'
 import { rupees } from '../scholarship/convert.js'
 import { fileSize } from '../scholarship/files.js'
 import * as O from '../scholarship/options.js'
 import '../scholarship/scholarship.css'
 import { completionText } from './format.js'
+import { FileReview, FlagsPanel, InterviewForm, ReviewChip } from './panels.jsx'
+import { PLACEMENT, QUEUES } from './roles.js'
 
 const ROLE_TITLES = { father: 'Father', mother: 'Mother', guardian: 'Guardian' }
 const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
@@ -143,7 +146,7 @@ function ActionPanel({ app, onSaved }) {
   )
 }
 
-function DeclarationReview({ decl, onChanged }) {
+function DeclarationReview({ decl, canReceive, onChanged }) {
   const [date, setDate] = useState(todayIso())
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -183,7 +186,7 @@ function DeclarationReview({ decl, onChanged }) {
             : 'Original not received'}
         </li>
       </ul>
-      {decl.physical_received_on ? (
+      {!canReceive ? null : decl.physical_received_on ? (
         <button type="button" className="secondary" disabled={busy}
           onClick={() => window.confirm('Undo "original received"?') && call('DELETE')}>
           Undo received
@@ -211,7 +214,9 @@ const NAV = [['personal', 'Personal'], ['family', 'Family'], ['parents', 'Parent
 /** Everything one applicant submitted, plus the actions open to the current user at this stage. */
 export default function ReviewDetail() {
   const { id } = useParams()
+  const { user } = useAuth()
   const [app, setApp] = useState(null)
+  const [moved, setMoved] = useState(null)
   const [error, setError] = useState('')
 
   const load = useCallback(
@@ -221,16 +226,31 @@ export default function ReviewDetail() {
   )
   useEffect(() => { load() }, [load])
 
+  if (moved) {
+    return (
+      <main className="sch-page">
+        <p className="notice-ok" role="status">
+          Done. Application {moved.id} is now at "{O.STATUS_LABELS[moved.status]}" and has left your queue.
+        </p>
+        <Link className="button" to="/review">Back to {QUEUES[user.role]?.title || 'the list'}</Link>
+      </main>
+    )
+  }
   if (error) return <main className="sch-page"><p className="field-error">{error}</p><Link to="/review">Back to the list</Link></main>
   if (!app) return <main className="sch-page"><p>Loading...</p></main>
 
   const s = app.summary
   const missingDocs = app.documents.filter((d) => d.missing)
   const parent = (role) => app.parents.find((p) => p.role === role)
+  const isPlacement = PLACEMENT.includes(user.role)
+  const verifying = isPlacement && app.status === 'placement_verification'
+  const canReceive = isPlacement && ['placement_verification', 'returned'].includes(app.status)
+  const interviewing = user.role === 'dac_member' && app.status === 'dac_review'
+  const onActed = (updated) => (updated.left_queue ? setMoved(updated) : setApp(updated))
 
   return (
     <main className="sch-page">
-      <p className="crumbs"><Link to="/review">Scholarship applications</Link> / Application {app.id}</p>
+      <p className="crumbs"><Link to="/review">{QUEUES[user.role]?.title || 'Scholarship applications'}</Link> / Application {app.id}</p>
       <h1>{app.applicant_name}</h1>
       <p className="status-line">
         <span className={`chip chip-${app.status}`}>{O.STATUS_LABELS[app.status]}</span>{' '}
@@ -245,6 +265,20 @@ export default function ReviewDetail() {
 
       <div className="review-layout">
         <div className="review-main">
+          {(verifying || app.flags?.length > 0) && (
+            <Section id="corrections" title="Corrections requested">
+              <FlagsPanel app={app} canEdit={verifying} onChanged={load} />
+            </Section>
+          )}
+          {app.interview_date && (
+            <Section id="interview" title="DAC interview">
+              <Facts items={[
+                ['Interview date', day(app.interview_date)], ['Recorded by', app.interview_recorded_by],
+                ['Remarks', app.interview_remarks],
+                ['Recommended scholarship', app.scholarship_percentage != null ? `${app.scholarship_percentage}% of the semester tuition fee` : '—'],
+              ]} />
+            </Section>
+          )}
           <Section id="personal" title="Personal details">
             <Facts items={[
               ['Name', app.applicant_name], ['Registration ID', app.registration_id], ['Program', app.program],
@@ -403,11 +437,14 @@ export default function ReviewDetail() {
                       <li key={f.id}>
                         <span className="doc-name">{f.original_name}</span>
                         <span className="field-hint">{fileSize(f.size)} · {day(f.uploaded_at)}</span>
+                        <ReviewChip file={f} />
                         <span className="doc-actions">
                           <button type="button" className="link-button neutral" onClick={() => openProtectedFile(f.download_url)}>
                             View
                           </button>
                         </span>
+                        {f.review_note && <p className="field-hint file-note">Note: {f.review_note}</p>}
+                        {verifying && <FileReview appId={app.id} file={f} onChanged={load} />}
                       </li>
                     ))}
                   </ul>
@@ -419,14 +456,15 @@ export default function ReviewDetail() {
           <Section id="form2" title="Form 2: stamp-paper income declarations">
             {app.declarations.length === 0 ? <p>No declaration needed (no earning parent or guardian).</p> : (
               <ul className="doc-list">
-                {app.declarations.map((d) => <DeclarationReview key={d.id} decl={d} onChanged={load} />)}
+                {app.declarations.map((d) => <DeclarationReview key={d.id} decl={d} canReceive={canReceive} onChanged={load} />)}
               </ul>
             )}
           </Section>
         </div>
 
         <aside className="review-side">
-          <ActionPanel app={app} onSaved={setApp} />
+          {interviewing && <InterviewForm app={app} onSaved={setApp} />}
+          <ActionPanel app={app} onSaved={onActed} />
         </aside>
       </div>
     </main>

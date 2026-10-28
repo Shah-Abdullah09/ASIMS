@@ -12,8 +12,7 @@ import ScholarshipHome from './scholarship/ScholarshipHome.jsx'
 import StatusPage from './scholarship/StatusPage.jsx'
 import ReviewDetail from './review/ReviewDetail.jsx'
 import ReviewList from './review/ReviewList.jsx'
-
-const REVIEWERS = ['placement_officer', 'administrator']
+import { STAFF } from './review/roles.js'
 
 /** Only signed-in users; with `role`, only that role (or one of a list of roles). */
 function RequireAuth({ children, role }) {
@@ -37,8 +36,8 @@ export default function App() {
       <Route path="/scholarships/:id/form2" element={<RequireAuth role="student"><Form2Page /></RequireAuth>} />
       <Route path="/scholarships/:id/status" element={<RequireAuth role="student"><StatusPage /></RequireAuth>} />
       <Route path="/scholarships/:id/:step" element={<RequireAuth role="student"><ApplicationWizard /></RequireAuth>} />
-      <Route path="/review" element={<RequireAuth role={REVIEWERS}><ReviewList /></RequireAuth>} />
-      <Route path="/review/:id" element={<RequireAuth role={REVIEWERS}><ReviewDetail /></RequireAuth>} />
+      <Route path="/review" element={<RequireAuth role={STAFF}><ReviewList /></RequireAuth>} />
+      <Route path="/review/:id" element={<RequireAuth role={STAFF}><ReviewDetail /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

@@ -205,3 +205,19 @@ table.list-table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .inline-field { display: inline-flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .inline-field input { width: auto; }
 div.person { border: 1px solid var(--border); border-radius: 8px; padding: 4px 14px; margin: 10px 0; }
+
+/* Phase 3: staff review tools */
+.file-review { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.file-review button { padding: 4px 10px; font-size: 14px; }
+.inline-form { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inline-form input { min-width: 0; flex: 1 1 220px; }
+.file-note { flex-basis: 100%; margin: 0; }
+.flag-list { list-style: none; padding: 0; display: grid; gap: 8px; }
+.flag-list li { border-left: 4px solid var(--border); padding: 4px 10px; }
+.flag-list li.flag-open { border-left-color: var(--warn-text); }
+.flag-list p { margin: 2px 0; }
+.flag-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 8px; }
+.flag-form label { display: flex; flex-direction: column; gap: 4px; }
+.flag-form .flag-note { flex: 1 1 260px; }
+.review-side { display: flex; flex-direction: column; gap: 16px; }
+

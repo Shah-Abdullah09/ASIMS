@@ -1,11 +1,9 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App from '../App.jsx'
 import { AuthProvider } from '../AuthContext.jsx'
-import ReviewDetail from './ReviewDetail.jsx'
-import ReviewList from './ReviewList.jsx'
 
 const ROW = (over = {}) => ({
   id: 7, applicant_name: 'Ali Khan', registration_id: '233585', cnic: '36302-1234567-1', email: 'ali@gmail.com',
@@ -70,8 +68,11 @@ const DETAIL = (over = {}) => ({
 })
 
 let calls
+let signedInRole = 'placement_officer'
 function mockApi(routes) {
   calls = []
+  const me = ['GET', '/auth/me/', () => ({ body: { id: 1, full_name: 'Test User', role: signedInRole, email: 'u@x.com' } })]
+  routes = [me, ...routes]
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts = {}) => {
     const method = opts.method || 'GET'
     const body = opts.body ? JSON.parse(opts.body) : undefined
@@ -88,20 +89,16 @@ const LISTS = [
   ['GET', '/departments/', () => ({ body: [{ id: 5, name: 'Computer Science', code: 'CS' }] })],
 ]
 
-function renderAt(path) {
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <Routes>
-        <Route path="/review" element={<ReviewList />} />
-        <Route path="/review/:id" element={<ReviewDetail />} />
-      </Routes>
-    </MemoryRouter>,
-  )
+/** The real app at `path`, signed in with `role` (the fake API answers /auth/me/ with it). */
+function renderAt(path, role = 'placement_officer') {
+  signedInRole = role
+  localStorage.setItem('asims_tokens', JSON.stringify({ access: 'a', refresh: 'r' }))
+  return render(<MemoryRouter initialEntries={[path]}><AuthProvider><App /></AuthProvider></MemoryRouter>)
 }
 
 const listCalls = () => calls.filter((c) => c.url.includes('/review/applications/')).map((c) => c.url.split('?')[1] || '')
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => { localStorage.clear(); signedInRole = 'placement_officer' })
 afterEach(() => vi.restoreAllMocks())
 
 // ---------- list ----------
@@ -258,13 +255,11 @@ test('the office marks the original received with a date, and can undo it', asyn
 // ---------- who can open the staff pages ----------
 
 function renderApp(path, role) {
-  localStorage.setItem('asims_tokens', JSON.stringify({ access: 'a', refresh: 'r' }))
   mockApi([
-    ['GET', '/auth/me/', () => ({ body: { id: 1, full_name: 'Test User', role, email: 'u@x.com' } })],
     ...LISTS,
     ['GET', '/review/applications/', () => ({ body: { count: 0, next: null, previous: null, results: [] } })],
   ])
-  return render(<MemoryRouter initialEntries={[path]}><AuthProvider><App /></AuthProvider></MemoryRouter>)
+  return renderAt(path, role)
 }
 
 test('students are sent back to the dashboard from the staff pages', async () => {
@@ -275,6 +270,108 @@ test('students are sent back to the dashboard from the staff pages', async () =>
 
 test.each(['placement_officer', 'administrator'])('%s can open the staff list from the dashboard link', async (role) => {
   renderApp('/dashboard', role)
-  await userEvent.click(await screen.findByRole('link', { name: 'Review scholarship applications' }))
+  await userEvent.click(await screen.findByRole('link', { name: 'My work: Scholarship applications' }))
   expect(await screen.findByRole('heading', { name: 'Scholarship applications' })).toBeInTheDocument()
+})
+
+// ---------- Phase 3: staff tools per role ----------
+
+const OPEN_FLAG = { id: 4, section: 'income', section_label: 'Income', note: 'Net pay missing.', flagged_by: 'Sana Placement',
+  flagged_at: '2026-10-24T09:00:00Z', is_open: true, resolved_at: null, resolved_by: null, resolution: '' }
+
+test('Placement marks a file verified or asks for clarification with a note', async () => {
+  detailApi([['POST', '/documents/11/review/', () => ({ body: {} })]])
+  renderAt('/review/7')
+  const domicile = await screen.findByRole('listitem', { name: '2. Domicile of Student' })
+  expect(within(domicile).getByText('Not reviewed')).toBeInTheDocument()
+  await userEvent.click(within(domicile).getByRole('button', { name: 'Verified' }))
+  await userEvent.click(within(domicile).getByRole('button', { name: 'Needs clarification' }))
+  await userEvent.type(within(domicile).getByLabelText(/What is unclear/), 'Stamp is not readable.')
+  await userEvent.click(within(domicile).getByRole('button', { name: 'Save' }))
+  const posts = calls.filter((c) => c.method === 'POST').map((c) => c.body)
+  expect(posts).toEqual([{ review_status: 'verified', note: '' },
+    { review_status: 'needs_clarification', note: 'Stamp is not readable.' }])
+})
+
+test('Placement flags a section and clears an open flag', async () => {
+  detailApi([
+    ['POST', '/flags/', () => ({ status: 201, body: {} })],
+    ['DELETE', '/flags/4/', () => ({ body: {} })],
+  ], () => DETAIL({ flags: [OPEN_FLAG] }))
+  renderAt('/review/7')
+  const panel = await screen.findByRole('form', { name: 'Request a correction' })
+  expect(screen.getByText(/Net pay missing\./)).toBeInTheDocument()
+  await userEvent.selectOptions(within(panel).getByLabelText('Section'), 'parents')
+  await userEvent.type(within(panel).getByLabelText(/What should the student correct/), "Mother's CNIC is wrong.")
+  await userEvent.click(within(panel).getByRole('button', { name: 'Flag section' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+  expect(calls.find((c) => c.method === 'POST').body).toEqual({ section: 'parents', note: "Mother's CNIC is wrong." })
+  expect(calls.some((c) => c.method === 'DELETE' && c.url.endsWith('/flags/4/'))).toBe(true)
+})
+
+test('an approver sees the DAC interview and decides, without Placement tools', async () => {
+  detailApi([], () => DETAIL({
+    status: 'director_review', interview_date: '2026-10-25', interview_remarks: 'Genuine need.',
+    interview_recorded_by: 'Dr Cs', scholarship_percentage: 60, flags: [],
+    available_actions: [
+      { action: 'approve', label: 'Approve', to_status: 'registrar_review', remarks_required: false, percentage: 'optional' },
+      { action: 'reject', label: 'Reject', to_status: 'rejected', remarks_required: true, percentage: null },
+    ],
+  }))
+  renderAt('/review/7', 'director')
+  const interview = await screen.findByRole('region', { name: 'DAC interview' })
+  expect(within(interview).getByText('Genuine need.')).toBeInTheDocument()
+  expect(within(interview).getByText('60% of the semester tuition fee')).toBeInTheDocument()
+  expect(screen.getByLabelText(/Scholarship percentage/)).toHaveValue(60)
+  expect(screen.queryByRole('button', { name: 'Verified' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Mark original received' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('form', { name: 'Request a correction' })).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Director review queue' })).toBeInTheDocument()
+})
+
+test('the DAC records the interview, shortlists, and the case leaves the queue', async () => {
+  const atDac = { status: 'dac_review', flags: [], available_actions: [
+    { action: 'shortlist', label: 'Shortlist', to_status: 'awaiting_forwarding', remarks_required: false, percentage: 'required' },
+    { action: 'not_shortlisted', label: 'Not shortlisted', to_status: 'rejected', remarks_required: true, percentage: null },
+  ] }
+  detailApi([
+    ['PUT', '/interview/', (body) => ({ body: DETAIL({ ...atDac, interview_date: body.interview_date,
+      interview_remarks: body.interview_remarks, interview_recorded_by: 'Test User' }) })],
+    ['POST', '/actions/', () => ({ body: { id: 7, status: 'awaiting_forwarding', status_label: 'Awaiting forwarding',
+      left_queue: true, available_actions: [] } })],
+  ], () => DETAIL(atDac))
+  renderAt('/review/7', 'dac_member')
+  const form = await screen.findByRole('form', { name: 'DAC interview' })
+  await userEvent.type(within(form).getByLabelText('Interview remarks'), 'Father is a clerk.')
+  await userEvent.click(within(form).getByRole('button', { name: 'Save interview' }))
+  expect(await screen.findByText('Interview saved.')).toBeInTheDocument()
+  expect(calls.find((c) => c.method === 'PUT').body.interview_remarks).toBe('Father is a clerk.')
+
+  await userEvent.type(screen.getByLabelText(/Scholarship percentage/), '60')
+  await userEvent.click(screen.getByRole('button', { name: 'Shortlist' }))
+  expect(calls.find((c) => c.method === 'POST').body).toEqual({ action: 'shortlist', remarks: '', percentage: 60 })
+  expect(await screen.findByText(/is now at "Awaiting forwarding" and has left your queue/)).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Back to DAC review queue' })).toHaveAttribute('href', '/review')
+})
+
+test('Placement forwards all shortlisted cases after confirming', async () => {
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
+  mockApi([...LISTS,
+    ['GET', '/review/applications/', () => ({ body: { count: 0, next: null, previous: null, results: [] } })],
+    ['POST', '/forward-all/', () => ({ body: { forwarded: [7, 8], skipped: [] } })],
+  ])
+  renderAt('/review')
+  await userEvent.click(await screen.findByRole('button', { name: 'Forward all shortlisted to the Director' }))
+  expect(await screen.findByText('Forwarded 2 cases to the Director.')).toBeInTheDocument()
+  expect(calls.find((c) => c.method === 'POST').body).toEqual({ confirm: true, cycle: null })
+})
+
+test('the DAC sees its own queue without Placement filters or forwarding', async () => {
+  mockApi([...LISTS, ['GET', '/review/applications/', () => ({ body: { count: 1, next: null, previous: null,
+    results: [ROW({ status: 'dac_review' })] } })]])
+  renderAt('/review', 'dac_member')
+  expect(await screen.findByRole('heading', { name: 'DAC review queue' })).toBeInTheDocument()
+  expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Department')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Forward all/ })).not.toBeInTheDocument()
 })

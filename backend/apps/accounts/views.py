@@ -2,9 +2,11 @@ from django.conf import settings
 from django.core import signing
 from django.core.mail import send_mail
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken
@@ -14,9 +16,11 @@ from apps.audit.log import record
 from apps.audit.models import AuditAction
 
 from .models import Department, Role, User
+from .passwords import INVITE, RESET, read_password_token, send_password_link
 from .permissions import has_role
-from .serializers import (AdminUserSerializer, DepartmentSerializer, LoginSerializer, ProfileUpdateSerializer,
-                          RegisterSerializer, UserSerializer, VerifyEmailSerializer)
+from .serializers import (AdminUserSerializer, DepartmentSerializer, LoginSerializer, PasswordChangeSerializer,
+                          PasswordForgotSerializer, PasswordResetSerializer, ProfileUpdateSerializer,
+                          RegisterSerializer, UserSerializer, VerifyEmailSerializer, check_new_password)
 
 VERIFY_SALT = 'asims-email-verification'
 
@@ -162,8 +166,85 @@ class UserAdminViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Re
         changes = self._changes(serializer.validated_data)  # before save, which removes the password
         user = serializer.save()
         record(AuditAction.USER_CREATED, request=self.request, target=user, **changes)
+        if not user.has_usable_password():
+            self._invite(user)
+
+    def _invite(self, user):
+        send_password_link(user, INVITE)
+        record(AuditAction.INVITATION_SENT, request=self.request, target=user, email=user.email)
+
+    @action(detail=True, methods=['post'])
+    def invite(self, request, pk=None):
+        """Email (again) a link for the person to set their own password."""
+        user = self.get_object()
+        if not user.is_active:
+            return Response({'detail': 'This account is deactivated.'}, status=status.HTTP_400_BAD_REQUEST)
+        self._invite(user)
+        return Response({'detail': f'Invitation sent to {user.email}.'})
 
     def perform_update(self, serializer):
         changes = self._changes(serializer.validated_data)
         user = serializer.save()
         record(AuditAction.USER_UPDATED, request=self.request, target=user, **changes)
+
+
+# ---------- passwords ----------
+
+class PasswordChangeView(GenericAPIView):
+    """A logged-in user (any role) changes their password; the current one is required."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = PasswordChangeSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        request.user.set_password(serializer.validated_data['new_password'])
+        request.user.save(update_fields=['password'])
+        record(AuditAction.PASSWORD_CHANGED, request=request, target=request.user)
+        return Response({'detail': 'Your password has been changed.'})
+
+
+class PasswordForgotView(GenericAPIView):
+    """Emails a reset link. The reply is the same whether or not the account exists, so the form cannot be used
+    to find out who has an account. Limited per client address (DEFAULT_THROTTLE_RATES)."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    serializer_class = PasswordForgotSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'password_forgot'
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email'].lower()
+        user = User.objects.filter(email=email, is_active=True).first()
+        if user:
+            send_password_link(user, RESET)
+        record(AuditAction.PASSWORD_RESET_REQUESTED, request=request, actor=user, email=email,
+               account_found=bool(user))
+        return Response({'detail': 'If an account exists for this email, a link to reset the password has been sent.'})
+
+
+class PasswordResetView(GenericAPIView):
+    """Sets a new password from an emailed link (reset or invitation). Using the link also confirms the email."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    serializer_class = PasswordResetSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        found = read_password_token(serializer.validated_data['token'])
+        if found is None:
+            return Response({'detail': 'This link is invalid, has expired or has already been used. '
+                                       'Ask for a new one.'}, status=status.HTTP_400_BAD_REQUEST)
+        user, purpose = found
+        check_new_password(serializer.validated_data['new_password'], user)
+        user.set_password(serializer.validated_data['new_password'])
+        user.is_email_verified = True
+        user.save(update_fields=['password', 'is_email_verified'])
+        record(AuditAction.PASSWORD_SET_FROM_LINK, request=request, actor=user, target=user, link=purpose)
+        return Response({'detail': 'Your password has been set. You can now log in.'})

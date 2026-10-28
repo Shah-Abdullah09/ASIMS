@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
@@ -90,9 +91,10 @@ class LoginSerializer(TokenObtainPairSerializer):
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
-    """Used by the Administrator to create and manage any account."""
+    """Used by the Administrator to create and manage any account. Without a password a new account gets an
+    emailed invitation to set its own (the view sends it), so the Administrator never knows it."""
 
-    password = serializers.CharField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = User
@@ -114,14 +116,12 @@ class AdminUserSerializer(serializers.ModelSerializer):
         department = attrs.get('department', getattr(self.instance, 'department', None))
         if role in DEPARTMENT_ROLES and department is None:
             raise serializers.ValidationError({'department': 'This role must be linked to a department.'})
-        if not self.instance and not attrs.get('password'):
-            raise serializers.ValidationError({'password': 'A password is required.'})
         if attrs.get('password'):
             validate_password(attrs['password'], self.instance)
         return attrs
 
     def create(self, validated):
-        password = validated.pop('password')
+        password = validated.pop('password', None) or None  # None -> unusable until the invitation is used
         return User.objects.create_user(password=password, is_email_verified=True, **validated)
 
     def update(self, instance, validated):
@@ -132,3 +132,35 @@ class AdminUserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+
+def check_new_password(password, user):
+    """Django's password rules (length, common, numeric, similar to the name or email) as field errors."""
+    try:
+        validate_password(password, user)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError({'new_password': list(exc.messages)})
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        if not user.check_password(attrs['current_password']):
+            raise serializers.ValidationError({'current_password': 'Your current password is not correct.'})
+        if attrs['new_password'] == attrs['current_password']:
+            raise serializers.ValidationError({'new_password': 'Choose a password different from the current one.'})
+        check_new_password(attrs['new_password'], user)
+        return attrs
+
+
+class PasswordForgotSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class PasswordResetSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True)
+

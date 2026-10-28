@@ -25,6 +25,10 @@ class AuditAction(models.TextChoices):
     SECTION_FLAGGED = 'section_flagged', 'Section flagged'
     FLAG_CLEARED = 'flag_cleared', 'Flag cleared'
     INTERVIEW_RECORDED = 'interview_recorded', 'DAC interview recorded'
+    PASSWORD_CHANGED = 'password_changed', 'Password changed'
+    PASSWORD_RESET_REQUESTED = 'password_reset_requested', 'Password reset requested'
+    PASSWORD_SET_FROM_LINK = 'password_set_from_link', 'Password set from an emailed link'
+    INVITATION_SENT = 'invitation_sent', 'Set-password invitation sent'
     WORKFLOW_ACTION = 'workflow_action', 'Workflow action'
 
 

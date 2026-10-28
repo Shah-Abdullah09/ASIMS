@@ -125,6 +125,8 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # Only views that opt in are throttled; "forgot password" is limited per client address
+    'DEFAULT_THROTTLE_RATES': {'password_forgot': '5/hour'},
 }
 
 SIMPLE_JWT = {

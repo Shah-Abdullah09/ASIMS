@@ -41,6 +41,7 @@ export default function Dashboard() {
       ) : (
         <p>Your role-specific tools will appear here as each module is built.</p>
       )}
+      <p><Link to="/account/password">Change password</Link></p>
       <button onClick={onLogout}>Log out</button>
     </main>
   )

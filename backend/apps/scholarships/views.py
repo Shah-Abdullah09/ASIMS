@@ -113,6 +113,7 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         serializer = ApplicationCreateSerializer(data=request.data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         app = serializer.save()
+        record(AuditAction.APPLICATION_CREATED, request=request, target=app, cycle=app.cycle_id)
         return Response(ApplicationDetailSerializer(self._fresh(app)).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'], url_path=r'sections/(?P<section>[a-z_]+)')
@@ -127,6 +128,8 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         serializer = serializer_class(app, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        record(AuditAction.APPLICATION_SAVED, request=request, target=app, section=section,
+               fields=sorted(serializer.validated_data), stage=app.status)
         return Response(ApplicationDetailSerializer(self._fresh(app)).data)
 
     # ---------- documents ----------
@@ -153,6 +156,8 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         doc = ApplicationDocument.objects.create(
             application=app, slot=slot, file=upload, original_name=original_name[:255],
             content_type=content_type, size=upload.size, uploaded_by=request.user)
+        record(AuditAction.DOCUMENT_UPLOADED, request=request, target=doc, application=app.pk, slot=slot,
+               name=doc.original_name, size=doc.size)
         return Response(DocumentSerializer(doc).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['put', 'delete'], url_path=r'documents/(?P<doc_id>\d+)')
@@ -167,6 +172,8 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
             raise PermissionDenied(VERIFIED_LOCKED)
         if request.method == 'DELETE':
             with transaction.atomic():
+                record(AuditAction.DOCUMENT_DELETED, request=request, target=doc, application=app.pk, slot=doc.slot,
+                       name=doc.original_name)
                 doc.delete()
                 transaction.on_commit(lambda name=doc.file.name, storage=doc.file.storage: storage.delete(name))
             return Response(status=status.HTTP_204_NO_CONTENT)
@@ -176,6 +183,7 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         upload = serializer.validated_data['file']
         content_type, ext = self._inspect(upload)
         old_name, storage = doc.file.name, doc.file.storage
+        replaced = doc.original_name
         doc.original_name = upload.name[:255]
         upload.name = stored_name(ext)
         doc.file = upload
@@ -184,6 +192,8 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         doc.clear_review()  # a new file has to be checked again
         with transaction.atomic():
             doc.save()
+            record(AuditAction.DOCUMENT_REPLACED, request=request, target=doc, application=app.pk, slot=doc.slot,
+                   name=doc.original_name, replaced=replaced)
             transaction.on_commit(lambda: storage.delete(old_name))
         return Response(DocumentSerializer(doc).data)
 
@@ -269,6 +279,8 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         declaration.scan_uploaded_by, declaration.scan_uploaded_at = request.user, timezone.now()
         with transaction.atomic():
             declaration.save()
+            record(AuditAction.SCAN_UPLOADED, request=request, target=declaration, application=app.pk,
+                   name=declaration.scan_original_name, replaced=bool(old))
             if old:
                 transaction.on_commit(lambda: old[0].delete(old[1]))
         return Response(DeclarationSerializer(declaration).data)
@@ -358,6 +370,8 @@ class DeclarationReceiveView(APIView):
         declaration.physical_received_on = serializer.validated_data.get('received_on', timezone.localdate())
         declaration.physical_received_by = request.user
         declaration.save(update_fields=['physical_received_on', 'physical_received_by'])
+        record(AuditAction.ORIGINAL_RECEIVED, request=request, target=declaration,
+               application=declaration.application_id, received_on=str(declaration.physical_received_on))
         return Response(DeclarationSerializer(declaration).data)
 
     def delete(self, request, declaration_id):
@@ -365,6 +379,8 @@ class DeclarationReceiveView(APIView):
         declaration.physical_received_on = None
         declaration.physical_received_by = None
         declaration.save(update_fields=['physical_received_on', 'physical_received_by'])
+        record(AuditAction.ORIGINAL_UNRECEIVED, request=request, target=declaration,
+               application=declaration.application_id)
         return Response(DeclarationSerializer(declaration).data)
 
 

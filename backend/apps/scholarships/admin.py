@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (Application, ApplicationDocument, AssetIncome, AssetWorth, Declaration, EarningMember,
                      EducationRecord, HouseholdMember, LandHolding, ParentGuardian, PreviousScholarship,
-                     ScholarshipCycle, StatusChange, StudyingMember, UtilityMonth, Vehicle)
+                     ScholarshipCycle, SectionFlag, StatusChange, StudyingMember, UtilityMonth, Vehicle)
 
 
 @admin.register(ScholarshipCycle)
@@ -22,18 +22,27 @@ class ReadOnlyFileInline(admin.TabularInline):
 
 class DocumentInline(ReadOnlyFileInline):
     model = ApplicationDocument
-    fields = readonly_fields = ['slot', 'original_name', 'content_type', 'size', 'uploaded_by', 'uploaded_at']
+    fields = readonly_fields = ['slot', 'original_name', 'content_type', 'size', 'uploaded_by', 'uploaded_at',
+                                'review_status', 'review_note', 'reviewed_by', 'reviewed_at']
 
 
 class StatusHistoryInline(ReadOnlyFileInline):
     model = StatusChange
-    fields = readonly_fields = ['from_status', 'to_status', 'remarks', 'changed_by', 'changed_at']
+    fields = readonly_fields = ['from_status', 'to_status', 'action', 'remarks', 'percentage', 'changed_by', 'role',
+                                'changed_at']
 
 
 class DeclarationInline(ReadOnlyFileInline):
     model = Declaration
-    fields = ['parent', 'scan_original_name', 'scan_uploaded_at', 'physical_received_on', 'physical_received_by']
-    readonly_fields = ['parent', 'scan_original_name', 'scan_uploaded_at']
+    # Receipts are recorded in the app, where the stage is checked and the change audited
+    fields = readonly_fields = ['parent', 'scan_original_name', 'scan_uploaded_at', 'physical_received_on',
+                                'physical_received_by']
+
+
+class FlagInline(ReadOnlyFileInline):
+    model = SectionFlag
+    fields = readonly_fields = ['section', 'note', 'flagged_by', 'flagged_at', 'resolved_at', 'resolved_by',
+                                'resolution']
 
 
 def tabular(model_class):
@@ -46,11 +55,15 @@ class ApplicationAdmin(admin.ModelAdmin):
                     'submitted_at']
     list_filter = ['cycle', 'status', 'student__department']
     search_fields = ['applicant_name', 'registration_id', 'cnic', 'student__email']
-    readonly_fields = ['student', 'created_at', 'updated_at', 'submitted_at', 'age']
+    # The approval chain moves a case (history, audit, emails); the admin only shows where it stands
+    readonly_fields = ['student', 'created_at', 'updated_at', 'submitted_at', 'age', 'status', 'scholarship_percentage',
+                       'review_remarks', 'reviewed_by', 'reviewed_at', 'interview_date', 'interview_remarks',
+                       'interview_recorded_by', 'interview_recorded_at']
     list_select_related = ['cycle', 'student__department']
     inlines = [tabular(m) for m in (HouseholdMember, EarningMember, StudyingMember, ParentGuardian, AssetIncome,
                                     UtilityMonth, Vehicle, LandHolding, AssetWorth, EducationRecord,
-                                    PreviousScholarship)] + [DocumentInline, DeclarationInline, StatusHistoryInline]
+                                    PreviousScholarship)] + [DocumentInline, DeclarationInline, FlagInline,
+                                                             StatusHistoryInline]
 
     @admin.display(description='Department', ordering='student__department__name')
     def student_department(self, obj):

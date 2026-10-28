@@ -16,7 +16,7 @@ export function useApplication(id) {
     api(`/scholarships/applications/${id}/`)
       .then((data) => {
         setApp(data)
-        if (data.is_editable) refreshReadiness()
+        if (data.is_editable || data.status === 'returned') refreshReadiness()
       })
       .catch((err) => setLoadError(err.status === 404 ? 'Application not found.' : err.message))
   }, [id, refreshReadiness])

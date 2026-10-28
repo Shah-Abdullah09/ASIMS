@@ -234,9 +234,66 @@ test('status page shows completion, decision remarks and the timeline', async ()
   renderAt('/scholarships/7/status')
   expect(await screen.findByRole('heading', { name: 'Application status' })).toBeInTheDocument()
   expect(screen.getAllByText('Placement verification').length).toBeGreaterThan(0)
-  expect(screen.getAllByText('Please bring the original salary slip.').length).toBe(2) // remarks box + timeline
+  expect(screen.getAllByText('Please bring the original salary slip.').length).toBe(1) // in the timeline
+  const progress = screen.getByRole('list', { name: 'Approval stages' })
+  expect(within(progress).getByText(/Placement verification/).closest('li')).toHaveAttribute('aria-current', 'step')
   expect(screen.getByText('Not yet. Complete the items still pending below.')).toBeInTheDocument()
   expect(screen.getByText('Application form submitted').closest('li')).toHaveClass('done')
   expect(screen.getByText('Original stamp paper received by the Placement Office').closest('li')).toHaveClass('pending')
   expect(screen.getByText(/Placement Officer/)).toBeInTheDocument()
+})
+
+// ---------- Phase 3: documents and status of a returned or decided application ----------
+
+test('a returned application reopens only the slots that need work, and verified files stay locked', async () => {
+  const returned = app({ status: 'returned', is_editable: false, submitted_at: '2026-10-20T09:00:00Z',
+    unlocked: { sections: [], slots: ['bank_statements'] }, flags: [] })
+  const checklist = [
+    slot({ files: [{ ...FILE, review_status: 'verified', review_note: '' }], missing: false }),
+    slot({ slot: 'bank_statements', label: '6. Bank Statements', max_files: 6, missing: false, files: [
+      { ...FILE, id: 12, slot: 'bank_statements', original_name: 'march.pdf', review_status: 'verified', review_note: '' },
+      { ...FILE, id: 13, slot: 'bank_statements', original_name: 'april.pdf', review_status: 'needs_clarification',
+        review_note: 'Last page is missing.' },
+    ] }),
+  ]
+  mockApi([
+    ['GET', '/readiness/', () => ({ body: { ready: true, sections: {}, missing_documents: [], problems: [] } })],
+    ['GET', '/applications/7/documents/', () => ({ body: checklist })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: returned })],
+  ])
+  renderAt('/scholarships/7/documents')
+  const domicile = await screen.findByRole('listitem', { name: '2. Domicile of Student' })
+  expect(within(domicile).queryByRole('button', { name: /Upload|Replace|Add another/ })).not.toBeInTheDocument()
+  const bank = screen.getByRole('listitem', { name: '6. Bank Statements' })
+  expect(within(bank).getByText('Placement Office: Last page is missing.')).toBeInTheDocument()
+  expect(within(bank).queryByRole('button', { name: 'Replace march.pdf' })).not.toBeInTheDocument()
+  expect(within(bank).getByRole('button', { name: 'Replace april.pdf' })).toBeInTheDocument()
+  expect(within(bank).getByRole('button', { name: 'Upload to 6. Bank Statements' })).toBeInTheDocument()
+})
+
+test('status page shows where a rejection stopped the case', async () => {
+  mockApi([['GET', '/scholarships/applications/7/', () => ({ body: app({
+    status: 'rejected', is_editable: false, submitted_at: '2026-10-20T09:00:00Z', review_remarks: 'Family owns two houses.',
+    completion: { form_submitted: true, declarations_required: 0, scans_uploaded: true, physical_copies_received: true, complete: true },
+    status_history: [
+      { from_status: 'draft', to_status: 'placement_verification', remarks: '', changed_by_role: 'Student', changed_at: '2026-10-20T09:00:00Z' },
+      { from_status: 'director_review', to_status: 'rejected', remarks: 'Family owns two houses.', changed_by_role: 'Director', changed_at: '2026-10-26T09:00:00Z' },
+    ],
+  }) })]])
+  renderAt('/scholarships/7/status')
+  expect(await screen.findByText('Your application was not approved.')).toBeInTheDocument()
+  const progress = screen.getByRole('list', { name: 'Approval stages' })
+  expect(within(progress).getByText(/Director review/).closest('li')).toHaveClass('stage-stopped')
+  expect(within(progress).getByText(/DAC review/).closest('li')).toHaveClass('stage-done')
+  expect(within(progress).getByText(/VC review/).closest('li')).toHaveClass('stage-todo')
+})
+
+test('status page shows the approved percentage after the VC approves', async () => {
+  mockApi([['GET', '/scholarships/applications/7/', () => ({ body: app({
+    status: 'awaiting_fee_adjustment', is_editable: false, submitted_at: '2026-10-20T09:00:00Z', scholarship_percentage: 50,
+    completion: { form_submitted: true, declarations_required: 0, scans_uploaded: true, physical_copies_received: true, complete: true },
+  }) })]])
+  renderAt('/scholarships/7/status')
+  expect(await screen.findByText('Approved by the Vice Chancellor.')).toBeInTheDocument()
+  expect(screen.getByText('Scholarship: 50% of the semester tuition fee.')).toBeInTheDocument()
 })

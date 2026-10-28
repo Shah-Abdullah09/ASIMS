@@ -134,7 +134,7 @@ export default function Form2Page() {
       <h1 className="no-print">Need Based Financial Grant</h1>
       <div className="no-print"><LockedBanner app={app} /></div>
       <div className="wizard">
-        <div className="no-print"><StepNav id={id} current="form2" readiness={readiness} editable={app.is_editable} /></div>
+        <div className="no-print"><StepNav id={id} current="form2" readiness={readiness} editable={app.is_editable} app={app} /></div>
         <section className="step-body">
           <h2 className="no-print">Form 2: stamp-paper income declarations</h2>
           {declarations.length === 0 ? (
@@ -156,8 +156,8 @@ export default function Form2Page() {
           ))}
           <div className="actions no-print">
             <Link className="button secondary" to={`/scholarships/${id}/documents`}>Back</Link>
-            <Link className="button" to={`/scholarships/${id}/${app.is_editable ? 'review' : 'status'}`}>
-              {app.is_editable ? 'Continue to review' : 'View status'}
+            <Link className="button" to={`/scholarships/${id}/${app.is_editable || app.status === 'returned' ? 'review' : 'status'}`}>
+              {app.is_editable ? 'Continue to review' : app.status === 'returned' ? 'Review & resubmit' : 'View status'}
             </Link>
           </div>
         </section>

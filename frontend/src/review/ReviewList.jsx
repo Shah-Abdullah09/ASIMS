@@ -1,16 +1,24 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
+import { useAuth } from '../AuthContext.jsx'
 import { STATUS_LABELS } from '../scholarship/options.js'
 import '../scholarship/scholarship.css'
 import { completionText } from './format.js'
+import { PLACEMENT, QUEUES } from './roles.js'
 
 const FILTERS = ['cycle', 'department', 'status', 'complete', 'search', 'ordering', 'page']
 const date = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
 
-/** Placement Office list of submitted applications with filters and search (kept in the address bar). */
+/** A staff member's work queue. The Placement Office sees every case with filters and can forward shortlisted
+cases in bulk; the DAC and approvers see the cases waiting for them. Filters stay in the address bar. */
 export default function ReviewList() {
+  const { user } = useAuth()
+  const isPlacement = PLACEMENT.includes(user.role)
+  const queue = QUEUES[user.role] || QUEUES.placement_officer
   const [params, setParams] = useSearchParams()
+  const [refresh, setRefresh] = useState(0)
+  const [forwardMsg, setForwardMsg] = useState('')
   const [cycles, setCycles] = useState([])
   const [departments, setDepartments] = useState([])
   const [data, setData] = useState(null)
@@ -29,7 +37,23 @@ export default function ReviewList() {
       .then((d) => current && (setData(d), setError('')))
       .catch((e) => current && setError(e.message))
     return () => { current = false }
-  }, [query])
+  }, [query, refresh])
+
+  async function forwardAll() {
+    const cycle = params.get('cycle')
+    const scope = cycle ? ` of ${cycles.find((c) => String(c.id) === cycle)?.name || 'this cycle'}` : ''
+    if (!window.confirm(`Forward every shortlisted case${scope} awaiting forwarding to the Director?`)) return
+    setForwardMsg('')
+    try {
+      const result = await api('/scholarships/review/applications/forward-all/',
+        { method: 'POST', body: { confirm: true, cycle: cycle ? Number(cycle) : null } })
+      const n = result.forwarded.length
+      setForwardMsg(n ? `Forwarded ${n} case${n === 1 ? '' : 's'} to the Director.` : 'No cases were awaiting forwarding.')
+      setRefresh((x) => x + 1)
+    } catch (err) {
+      setForwardMsg(err.message)
+    }
+  }
 
   function setFilter(name, value) {
     const next = new URLSearchParams(params)
@@ -45,8 +69,14 @@ export default function ReviewList() {
   return (
     <main className="sch-page">
       <p className="crumbs"><Link to="/dashboard">Dashboard</Link></p>
-      <h1>Scholarship applications</h1>
-      <p className="field-hint">Submitted Need Based Financial Grant applications. Drafts are not shown.</p>
+      <h1>{queue.title}</h1>
+      <p className="field-hint">{queue.hint}</p>
+      {isPlacement && (
+        <div className="actions">
+          <button type="button" onClick={forwardAll}>Forward all shortlisted to the Director</button>
+          {forwardMsg && <p role="status" className="notice-ok">{forwardMsg}</p>}
+        </div>
+      )}
 
       <form className="filters" role="search" onSubmit={(e) => { e.preventDefault(); setFilter('search', search.trim()) }}>
         <label>
@@ -62,20 +92,20 @@ export default function ReviewList() {
             {cycles.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
-        <label>
+        {isPlacement && <label>
           Department
           <select value={params.get('department') || ''} onChange={(e) => setFilter('department', e.target.value)}>
             <option value="">All departments</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
-        </label>
-        <label>
+        </label>}
+        {isPlacement && <label>
           Status
           <select value={params.get('status') || ''} onChange={(e) => setFilter('status', e.target.value)}>
             <option value="">All statuses</option>
-            {['pending', 'under_review', 'approved', 'rejected'].map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+            {Object.keys(STATUS_LABELS).filter((s) => s !== 'draft').map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
           </select>
-        </label>
+        </label>}
         <label>
           Completeness
           <select value={params.get('complete') || ''} onChange={(e) => setFilter('complete', e.target.value)}>

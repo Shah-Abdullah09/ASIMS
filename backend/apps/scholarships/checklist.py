@@ -18,7 +18,7 @@ def _salaried_parents(app):
             if p.status == LifeStatus.ALIVE and p.profession in (Profession.EMPLOYED, Profession.RETIRED)]
 
 
-def _rules(app):
+def slot_rules(app):
     """slot -> (kind, required now?, reason shown to the student)."""
     salaried = bool(_salaried_parents(app))
     sibling_earns = any(m.relationship in (Relationship.BROTHER, Relationship.SISTER)
@@ -72,7 +72,7 @@ def max_files(slot):
 
 def build_checklist(app, file_serializer):
     """One entry per slot, in checklist order, with its files and whether it is still missing."""
-    rules = _rules(app)
+    rules = slot_rules(app)
     files_by_slot = {}
     for doc in app.documents.all():
         files_by_slot.setdefault(doc.slot, []).append(doc)
@@ -94,6 +94,6 @@ def build_checklist(app, file_serializer):
 
 
 def missing_slots(app):
-    rules = _rules(app)
+    rules = slot_rules(app)
     uploaded = set(app.documents.values_list('slot', flat=True))
     return [slot for slot in DocumentSlot if rules[slot][1] and slot.value not in uploaded]

@@ -180,7 +180,7 @@ test('education months are sent as the first day of the month', async () => {
 
 test('a submitted application is read-only', async () => {
   mockApi([
-    ['GET', '/scholarships/applications/7/', () => ({ body: makeApp({ status: 'pending', is_editable: false, submitted_at: '2026-10-20T09:00:00Z' }) })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: makeApp({ status: 'placement_verification', is_editable: false, submitted_at: '2026-10-20T09:00:00Z' }) })],
   ])
   renderAt('/scholarships/7/personal')
   expect(await screen.findByText(/can no longer be changed/)).toBeInTheDocument()
@@ -205,7 +205,7 @@ test('review submits after confirmation when ready', async () => {
   mockApi([
     ['GET', '/readiness/', () => ({ body: { ready: true, sections: {}, missing_documents: [], problems: [] } })],
     ['GET', '/scholarships/applications/7/', () => ({ body: makeApp({ summary: { ...SUMMARY, total_monthly_income: 72000, net_monthly_disposable: 30000 } }) })],
-    ['POST', '/submit/', () => ({ body: makeApp({ status: 'pending', is_editable: false, submitted_at: '2026-10-22T11:00:00Z' }) })],
+    ['POST', '/submit/', () => ({ body: makeApp({ status: 'placement_verification', is_editable: false, submitted_at: '2026-10-22T11:00:00Z' }) })],
   ])
   renderAt('/scholarships/7/review')
   expect(await screen.findByText('Rs. 72,000')).toBeInTheDocument()
@@ -214,4 +214,76 @@ test('review submits after confirmation when ready', async () => {
   expect(await screen.findByRole('status')).toHaveTextContent('has been submitted')
   expect(screen.getByText(/can no longer be changed/)).toBeInTheDocument()
   expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1)
+})
+
+// ---------- Phase 3: returned for corrections ----------
+
+const RETURN = { from_status: 'placement_verification', to_status: 'returned', action: 'return', percentage: null,
+  remarks: 'Please fix the flagged items.', changed_by: 'Sana Placement', changed_by_role: 'Placement Officer',
+  changed_at: '2026-10-24T09:00:00Z' }
+const returnedApp = (over = {}) => makeApp({
+  status: 'returned', is_editable: false, submitted_at: '2026-10-20T09:00:00Z', review_remarks: RETURN.remarks,
+  status_history: [RETURN], unlocked: { sections: ['personal'], slots: ['bank_statements'] },
+  flags: [{ id: 4, section: 'personal', section_label: 'Personal details', note: 'CNIC does not match the card.',
+    flagged_by: 'Sana Placement', flagged_at: '2026-10-24T09:00:00Z', is_open: true, resolved_at: null, resolution: '' }],
+  ...over,
+})
+const READY = { ready: true, sections: {}, missing_documents: [], problems: [] }
+
+test('a returned application explains what to correct and opens only the flagged step', async () => {
+  mockApi([
+    ['GET', '/readiness/', () => ({ body: READY })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: returnedApp({ unlocked: { sections: ['income'], slots: ['bank_statements'] } }) })],
+  ])
+  renderAt('/scholarships/7/personal')
+  const banner = await screen.findByRole('region', { name: 'Returned for corrections' })
+  expect(within(banner).getByText('Reason: Please fix the flagged items.')).toBeInTheDocument()
+  expect(within(banner).getByRole('link', { name: 'Correct' })).toHaveAttribute('href', '/scholarships/7/personal')
+  expect(within(banner).getByText(/Bank Statement\(s\)/)).toBeInTheDocument()
+  expect(screen.getByText(/was not flagged by the Placement Office/)).toBeInTheDocument()
+  expect(screen.getByLabelText(/CNIC/)).toBeDisabled()
+  const nav = screen.getByRole('navigation', { name: 'Application steps' })
+  expect(within(nav).getAllByText('to correct')).toHaveLength(2) // Income and Documents
+})
+
+test('the flagged step can be corrected and saved', async () => {
+  mockApi([
+    ['GET', '/readiness/', () => ({ body: READY })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: returnedApp() })],
+    ['PATCH', '/sections/personal/', () => ({ body: returnedApp({ updated_at: '2026-10-25T09:00:00Z' }) })],
+  ])
+  renderAt('/scholarships/7/personal')
+  const cnic = await screen.findByLabelText(/CNIC/)
+  expect(cnic).toBeEnabled()
+  await userEvent.clear(cnic)
+  await userEvent.type(cnic, '36302-1234567-1')
+  await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('Resubmit when all corrections are done.')
+  expect(calls.find((c) => c.method === 'PATCH').body.cnic).toBe('36302-1234567-1')
+})
+
+test('resubmit sends the optional note after confirmation', async () => {
+  mockApi([
+    ['GET', '/readiness/', () => ({ body: READY })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: returnedApp() })],
+    ['POST', '/resubmit/', () => ({ body: makeApp({ status: 'placement_verification', is_editable: false, submitted_at: '2026-10-20T09:00:00Z' }) })],
+  ])
+  renderAt('/scholarships/7/review')
+  expect(await screen.findByRole('heading', { name: 'Review & resubmit' })).toBeInTheDocument()
+  await userEvent.type(screen.getByLabelText(/What did you change/), 'Corrected my CNIC.')
+  await userEvent.click(screen.getByRole('button', { name: 'Resubmit application' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Yes, resubmit' }))
+  expect(await screen.findByRole('status')).toHaveTextContent('sent back to the Placement Office')
+  expect(calls.find((c) => c.method === 'POST').body).toEqual({ remarks: 'Corrected my CNIC.' })
+  expect(calls.some((c) => c.url.includes('/submit/') && !c.url.includes('/resubmit/'))).toBe(false)
+})
+
+test('resubmit stays disabled until the corrections pass the checks', async () => {
+  mockApi([
+    ['GET', '/readiness/', () => ({ body: NOT_READY })],
+    ['GET', '/scholarships/applications/7/', () => ({ body: returnedApp() })],
+  ])
+  renderAt('/scholarships/7/review')
+  expect(await screen.findByText('Still needed before you can resubmit')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Resubmit application' })).toBeDisabled()
 })

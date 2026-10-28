@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.documents.paths import declaration_scan_path, scholarship_document_path
 
 from .choices import (PROFESSION_TEMPLATE, AccommodationStatus, AccommodationType, ApplicationStatus,
-                      DeclarationTemplate,
+                      DeclarationTemplate, DocumentReview, FlagSection,
                       AssetIncomeSource, AssetTitle, Division, DocumentSlot, EducationLevel, Gender,
                       LandCategory, LifeStatus, MaritalStatus, ParentRole, Profession, Relationship,
                       RentPaidBy, RoomRange, TransportType)
@@ -56,16 +56,26 @@ class Application(models.Model):
     cycle = models.ForeignKey(ScholarshipCycle, on_delete=models.PROTECT, related_name='applications')
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                 related_name='scholarship_applications')
-    status = models.CharField(max_length=20, choices=ApplicationStatus.choices, default=ApplicationStatus.DRAFT)
+    status = models.CharField('stage', max_length=30, choices=ApplicationStatus.choices,
+                              default=ApplicationStatus.DRAFT)
     submitted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Office review (pending / under review / approved / rejected); replaced by the workflow chain in Phase 3
+    # Latest staff action in the approval chain (the full record is in status_history)
     review_remarks = models.TextField(blank=True)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
                                     related_name='reviewed_scholarship_applications')
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    # DAC interview, recorded before the DAC shortlists (remarks are internal, not shown to the student)
+    interview_date = models.DateField(null=True, blank=True)
+    interview_remarks = models.TextField(blank=True)
+    interview_recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                              on_delete=models.PROTECT, related_name='recorded_scholarship_interviews')
+    interview_recorded_at = models.DateTimeField(null=True, blank=True)
+    # Share of the semester tuition fee: recommended by the DAC, may be changed by Director, Registrar or VC
+    scholarship_percentage = models.PositiveSmallIntegerField(
+        null=True, blank=True, validators=[MinValueValidator(1), MaxValueValidator(100)])
 
     # A. Applicant (Q1-8). Name, email and registration ID are copied from the profile.
     registration_id = models.CharField(max_length=8, blank=True)
@@ -352,12 +362,21 @@ class ApplicationDocument(models.Model):
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                     related_name='uploaded_scholarship_documents')
     uploaded_at = models.DateTimeField(auto_now_add=True)
+    # Placement verification; cleared when the student replaces the file
+    review_status = models.CharField(max_length=20, choices=DocumentReview.choices, blank=True)
+    review_note = models.CharField(max_length=500, blank=True)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+                                    related_name='reviewed_scholarship_documents')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['slot', 'uploaded_at']
 
     def __str__(self):
         return f'{self.get_slot_display()} - {self.original_name}'
+
+    def clear_review(self):
+        self.review_status, self.review_note, self.reviewed_by, self.reviewed_at = '', '', None, None
 
 
 class Declaration(models.Model):
@@ -386,14 +405,51 @@ class Declaration(models.Model):
         return bool(self.scan) and self.physical_received_on is not None
 
 
+class SectionFlag(models.Model):
+    """A part of the form Placement asks the student to correct. Open until the student resubmits
+    or Placement clears it; closed flags are kept as history."""
+
+    FIXED_BY_STUDENT = 'resubmitted'
+    CLEARED_BY_STAFF = 'cleared'
+
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='flags')
+    section = models.CharField(max_length=20, choices=FlagSection.choices)
+    note = models.CharField(max_length=500)
+    flagged_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                   related_name='scholarship_flags')
+    flagged_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+                                    related_name='resolved_scholarship_flags')
+    resolution = models.CharField(max_length=20, blank=True,
+                                  choices=[(FIXED_BY_STUDENT, 'Resubmitted by the student'),
+                                           (CLEARED_BY_STAFF, 'Cleared by the Placement Office')])
+
+    class Meta:
+        ordering = ['flagged_at', 'pk']
+        constraints = [models.UniqueConstraint(fields=['application', 'section'], condition=Q(resolved_at__isnull=True),
+                                               name='one_open_flag_per_section')]
+
+    def __str__(self):
+        return f'#{self.application_id} {self.get_section_display()}: {self.note}'
+
+    @property
+    def is_open(self):
+        return self.resolved_at is None
+
+
 class StatusChange(models.Model):
-    """Every status change of an application: submission by the student and decisions by staff."""
+    """Every move along the approval chain: who took which action, from which stage to which, and why."""
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='status_history')
-    from_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
-    to_status = models.CharField(max_length=20, choices=ApplicationStatus.choices)
+    from_status = models.CharField(max_length=30, choices=ApplicationStatus.choices)
+    to_status = models.CharField(max_length=30, choices=ApplicationStatus.choices)
+    action = models.CharField(max_length=30, blank=True, help_text='Workflow action, e.g. verify or approve')
     remarks = models.TextField(blank=True)
+    percentage = models.PositiveSmallIntegerField(null=True, blank=True,
+                                                  help_text='Scholarship % recommended or approved by this action')
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                    related_name='scholarship_status_changes')
+    role = models.CharField(max_length=30, blank=True, help_text='Role of the person at the time of the action')
     changed_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

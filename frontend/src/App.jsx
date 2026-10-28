@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './AuthContext.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Login from './pages/Login.jsx'
+import { ChangePassword, ForgotPassword, ResetPassword } from './pages/PasswordPages.jsx'
 import Register from './pages/Register.jsx'
 import VerifyEmail from './pages/VerifyEmail.jsx'
 import ApplicationReview from './scholarship/ApplicationReview.jsx'
@@ -12,8 +13,7 @@ import ScholarshipHome from './scholarship/ScholarshipHome.jsx'
 import StatusPage from './scholarship/StatusPage.jsx'
 import ReviewDetail from './review/ReviewDetail.jsx'
 import ReviewList from './review/ReviewList.jsx'
-
-const REVIEWERS = ['placement_officer', 'administrator']
+import { STAFF } from './review/roles.js'
 
 /** Only signed-in users; with `role`, only that role (or one of a list of roles). */
 function RequireAuth({ children, role }) {
@@ -30,6 +30,9 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/account/password" element={<RequireAuth><ChangePassword /></RequireAuth>} />
       <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
       <Route path="/scholarships" element={<RequireAuth role="student"><ScholarshipHome /></RequireAuth>} />
       <Route path="/scholarships/:id/review" element={<RequireAuth role="student"><ApplicationReview /></RequireAuth>} />
@@ -37,8 +40,8 @@ export default function App() {
       <Route path="/scholarships/:id/form2" element={<RequireAuth role="student"><Form2Page /></RequireAuth>} />
       <Route path="/scholarships/:id/status" element={<RequireAuth role="student"><StatusPage /></RequireAuth>} />
       <Route path="/scholarships/:id/:step" element={<RequireAuth role="student"><ApplicationWizard /></RequireAuth>} />
-      <Route path="/review" element={<RequireAuth role={REVIEWERS}><ReviewList /></RequireAuth>} />
-      <Route path="/review/:id" element={<RequireAuth role={REVIEWERS}><ReviewDetail /></RequireAuth>} />
+      <Route path="/review" element={<RequireAuth role={STAFF}><ReviewList /></RequireAuth>} />
+      <Route path="/review/:id" element={<RequireAuth role={STAFF}><ReviewDetail /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   )

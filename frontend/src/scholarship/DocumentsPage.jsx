@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, apiUpload, openProtectedFile } from '../api.js'
 import { LockedBanner, StepNav } from './ApplicationWizard.jsx'
 import { ACCEPT, checkFile, fileSize, MAX_MB, uploadError } from './files.js'
+import { isReturned, slotOpen } from './returned.js'
 import { useApplication } from './useApplication.js'
 
 const KIND = {
@@ -30,7 +31,9 @@ export function FilePicker({ label, onPick, disabled, ariaLabel }) {
   )
 }
 
-function Slot({ entry, editable, appId, onChanged }) {
+const REVIEW = { verified: 'Verified', needs_clarification: 'Needs clarification' }
+
+function Slot({ entry, editable, returned, appId, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const required = entry.required
@@ -87,17 +90,21 @@ function Slot({ entry, editable, appId, onChanged }) {
             <li key={doc.id}>
               <span className="doc-name">{doc.original_name}</span>
               <span className="field-hint">{fileSize(doc.size)} · {new Date(doc.uploaded_at).toLocaleDateString('en-GB')}</span>
+              {REVIEW[doc.review_status] && (
+                <span className={`chip ${doc.review_status === 'verified' ? 'chip-ok' : 'chip-warn'}`}>{REVIEW[doc.review_status]}</span>
+              )}
               <span className="doc-actions">
                 <button type="button" className="link-button neutral" onClick={() => openProtectedFile(doc.download_url).catch((e) => setError(e.message))}>
                   View
                 </button>
-                {editable && (
+                {editable && !(returned && doc.review_status === 'verified') && (
                   <>
                     <FilePicker label="Replace" ariaLabel={`Replace ${doc.original_name}`} disabled={busy} onPick={(f) => replace(doc, f)} />
                     <button type="button" className="link-button" disabled={busy} onClick={() => remove(doc)}>Delete</button>
                   </>
                 )}
               </span>
+              {doc.review_note && <p className="field-hint file-note">Placement Office: {doc.review_note}</p>}
             </li>
           ))}
         </ul>
@@ -132,7 +139,7 @@ export default function DocumentsPage() {
   if (loadError || error) return <main className="sch-page"><p className="field-error">{loadError || error}</p></main>
   if (!app || !checklist) return <main className="sch-page"><p>Loading...</p></main>
 
-  const editable = app.is_editable
+  const returned = isReturned(app)
   const missing = checklist.filter((e) => e.missing).length
   const shown = onlyMissing ? checklist.filter((e) => e.missing) : checklist
   const changed = async () => {
@@ -146,7 +153,7 @@ export default function DocumentsPage() {
       <h1>Need Based Financial Grant</h1>
       <LockedBanner app={app} />
       <div className="wizard">
-        <StepNav id={id} current="documents" readiness={readiness} editable={editable} />
+        <StepNav id={id} current="documents" readiness={readiness} editable={app.is_editable} app={app} />
         <section className="step-body">
           <h2>Supporting documents</h2>
           <p>
@@ -162,7 +169,9 @@ export default function DocumentsPage() {
           </label>
           <p className="field-hint">The income declaration (checklist item 5) is Form 2, on the next step.</p>
           <ul className="doc-list">
-            {shown.map((entry) => <Slot key={entry.slot} entry={entry} editable={editable} appId={id} onChanged={changed} />)}
+            {shown.map((entry) => (
+              <Slot key={entry.slot} entry={entry} editable={slotOpen(app, entry.slot)} returned={returned} appId={id} onChanged={changed} />
+            ))}
           </ul>
           <div className="actions">
             <Link className="button secondary" to={`/scholarships/${id}/undertaking`}>Back</Link>

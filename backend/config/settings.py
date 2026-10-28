@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'apps.accounts',
     'apps.scholarships',
     'apps.workflow',
+    'apps.audit',
     'apps.documents',
     'apps.notifications',
 ]
@@ -74,7 +75,8 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 # PostgreSQL is the target database (TO3). SQLite is only a quick local fallback.
 if os.getenv('DB_ENGINE', 'postgres') == 'sqlite':
-    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
+    DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3',
+                             'NAME': os.getenv('SQLITE_PATH', BASE_DIR / 'db.sqlite3')}}
 else:
     DATABASES = {
         'default': {
@@ -101,7 +103,7 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 MEDIA_URL = 'media/'
-MEDIA_ROOT = BASE_DIR / 'media'  # local filesystem storage for uploads (see report 1.5.2)
+MEDIA_ROOT = os.getenv('MEDIA_ROOT', BASE_DIR / 'media')  # local filesystem storage for uploads (see report 1.5.2)
 
 MAX_UPLOAD_SIZE_MB = 5  # per file
 
@@ -124,6 +126,8 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
+    # Only views that opt in are throttled; "forgot password" is limited per client address
+    'DEFAULT_THROTTLE_RATES': {'password_forgot': '5/hour'},
 }
 
 SIMPLE_JWT = {

@@ -58,10 +58,34 @@ export const DOCUMENT_LABELS = {
   result_cards: '18. Matriculation and Intermediate Result Cards',
 }
 
+/** Stages of the approval chain, in order. */
 export const STATUS_LABELS = {
   draft: 'Draft',
-  pending: 'Pending',
-  under_review: 'Under review',
-  approved: 'Approved',
+  placement_verification: 'Placement verification',
+  returned: 'Returned to student',
+  dac_review: 'DAC review',
+  awaiting_forwarding: 'Awaiting forwarding',
+  director_review: 'Director review',
+  registrar_review: 'Registrar review',
+  vc_review: 'VC review',
+  awaiting_fee_adjustment: 'Awaiting fee adjustment',
   rejected: 'Rejected',
 }
+
+/** What happened at each step of the timeline, phrased as the action (the stage it led to is shown beside it). */
+export const ACTION_LABELS = {
+  submit: 'Submitted',
+  resubmit: 'Resubmitted with corrections',
+  return: 'Returned for corrections',
+  verify: 'Documents verified, sent to the DAC',
+  reject: 'Rejected',
+  shortlist: 'Shortlisted',
+  not_shortlisted: 'Not shortlisted',
+  forward: 'Forwarded to the Director',
+  approve: 'Approved',
+  status_change: 'Status changed',
+}
+
+/** One timeline line: "Approved by Director", falling back to the stage for entries without an action. */
+export const historyTitle = (h) => (ACTION_LABELS[h.action] ? `${ACTION_LABELS[h.action]} by ${h.changed_by_role}`
+  : `${STATUS_LABELS[h.to_status]} (${h.changed_by_role})`)

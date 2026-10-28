@@ -5,6 +5,7 @@ import { LockedBanner, StepNav } from './ApplicationWizard.jsx'
 import { useApplication } from './useApplication.js'
 import { rupees } from './convert.js'
 import { DOCUMENT_LABELS } from './options.js'
+import { isReturned } from './returned.js'
 import { stepByKey } from './steps.jsx'
 
 function describe(errors) {
@@ -23,23 +24,30 @@ export default function ApplicationReview() {
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [message, setMessage] = useState({ kind: '', text: '' })
+  const [changes, setChanges] = useState('')
 
   if (loadError) return <main className="sch-page"><p className="field-error">{loadError}</p></main>
   if (!app) return <main className="sch-page"><p>Loading...</p></main>
 
   const s = app.summary
-  const editable = app.is_editable
+  const returned = isReturned(app)
+  const editable = app.is_editable || returned // can (re)submit
   const ready = readiness?.ready
 
   async function submit() {
     setSubmitting(true)
     setMessage({ kind: '', text: '' })
     try {
-      setApp(await api(`/scholarships/applications/${id}/submit/`, { method: 'POST' }))
-      setMessage({
-        kind: 'ok',
-        text: 'Your application has been submitted. A confirmation email has been sent to you. Next: upload the Form 2 scan and hand in the original.',
-      })
+      if (returned) {
+        setApp(await api(`/scholarships/applications/${id}/resubmit/`, { method: 'POST', body: { remarks: changes } }))
+        setMessage({ kind: 'ok', text: 'Your corrected application has been sent back to the Placement Office.' })
+      } else {
+        setApp(await api(`/scholarships/applications/${id}/submit/`, { method: 'POST' }))
+        setMessage({
+          kind: 'ok',
+          text: 'Your application has been submitted. A confirmation email has been sent to you. Next: upload the Form 2 scan and hand in the original.',
+        })
+      }
     } catch (err) {
       setMessage({ kind: 'error', text: err.message })
       refreshReadiness()
@@ -56,9 +64,9 @@ export default function ApplicationReview() {
       <LockedBanner app={app} />
       {!editable && <p><Link to={`/scholarships/${id}/status`}>See your application status</Link></p>}
       <div className="wizard">
-        <StepNav id={id} current="review" readiness={readiness} editable={editable} />
+        <StepNav id={id} current="review" readiness={readiness} editable={app.is_editable} app={app} />
         <section className="step-body">
-          <h2>Review & submit</h2>
+          <h2>{returned ? 'Review & resubmit' : 'Review & submit'}</h2>
           {message.text && (
             <p className={message.kind === 'ok' ? 'notice-ok' : 'field-error'} role={message.kind === 'ok' ? 'status' : 'alert'}>
               {message.text}
@@ -86,7 +94,7 @@ export default function ApplicationReview() {
 
           {editable && readiness && !ready && (
             <>
-              <h3>Still needed before you can submit</h3>
+              <h3>Still needed before you can {returned ? 'resubmit' : 'submit'}</h3>
               {Object.entries(readiness.sections).map(([key, errors]) => (
                 <div key={key} className="todo">
                   <p>
@@ -108,16 +116,27 @@ export default function ApplicationReview() {
 
           {editable && (
             <div className="actions">
+              {returned && (
+                <div className="field">
+                  <label htmlFor="resubmit-changes">What did you change? (optional, shown to the Placement Office)</label>
+                  <textarea id="resubmit-changes" rows={3} maxLength={2000} value={changes} onChange={(e) => setChanges(e.target.value)} />
+                </div>
+              )}
               {!confirming ? (
-                <button type="button" disabled={!ready || submitting} onClick={() => setConfirming(true)}>Submit application</button>
+                <button type="button" disabled={!ready || submitting} onClick={() => setConfirming(true)}>
+                  {returned ? 'Resubmit application' : 'Submit application'}
+                </button>
               ) : (
                 <div className="confirm" role="group" aria-label="Confirm submission">
-                  <p>After submitting you cannot change your answers or documents. Submit now?</p>
-                  <button type="button" disabled={submitting} onClick={submit}>{submitting ? 'Submitting...' : 'Yes, submit'}</button>
+                  <p>{returned ? 'Send the corrected application back to the Placement Office? You cannot change it afterwards.'
+                    : 'After submitting you cannot change your answers or documents. Submit now?'}</p>
+                  <button type="button" disabled={submitting} onClick={submit}>
+                    {submitting ? 'Sending...' : returned ? 'Yes, resubmit' : 'Yes, submit'}
+                  </button>
                   <button type="button" className="secondary" onClick={() => setConfirming(false)}>Cancel</button>
                 </div>
               )}
-              {!ready && readiness && <p className="field-hint">Complete everything above to enable submission.</p>}
+              {!ready && readiness && <p className="field-hint">Complete everything above to enable {returned ? 'resubmission' : 'submission'}.</p>}
             </div>
           )}
         </section>

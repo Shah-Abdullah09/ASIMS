@@ -3,11 +3,37 @@ from django.db import models
 
 
 class ApplicationStatus(models.TextChoices):
+    """The stage of the approval chain an application is at (see workflow.py for who moves it on)."""
     DRAFT = 'draft', 'Draft'
-    PENDING = 'pending', 'Pending'
-    UNDER_REVIEW = 'under_review', 'Under review'
-    APPROVED = 'approved', 'Approved'
+    PLACEMENT_VERIFICATION = 'placement_verification', 'Placement verification'
+    RETURNED = 'returned', 'Returned to student'
+    DAC_REVIEW = 'dac_review', 'DAC review'
+    AWAITING_FORWARDING = 'awaiting_forwarding', 'Awaiting forwarding'
+    DIRECTOR_REVIEW = 'director_review', 'Director review'
+    REGISTRAR_REVIEW = 'registrar_review', 'Registrar review'
+    VC_REVIEW = 'vc_review', 'VC review'
+    AWAITING_FEE_ADJUSTMENT = 'awaiting_fee_adjustment', 'Awaiting fee adjustment'
     REJECTED = 'rejected', 'Rejected'
+
+
+class DocumentReview(models.TextChoices):
+    """Placement Office check of one uploaded file. Empty means not reviewed yet."""
+    VERIFIED = 'verified', 'Verified'
+    NEEDS_CLARIFICATION = 'needs_clarification', 'Needs clarification'
+
+
+class FlagSection(models.TextChoices):
+    """Parts of the application Placement can flag when returning it (the wizard sections plus Form 2)."""
+    PERSONAL = 'personal', 'Personal details'
+    HOUSEHOLD = 'household', 'Family'
+    PARENTS = 'parents', 'Parents & guardian'
+    INCOME = 'income', 'Income'
+    ACCOMMODATION = 'accommodation', 'Accommodation'
+    EXPENSES = 'expenses', 'Expenditure'
+    ASSETS = 'assets', 'Assets & financing'
+    EDUCATION = 'education', 'Education'
+    UNDERTAKING = 'undertaking', 'Undertaking'
+    FORM2 = 'form2', 'Form 2 scan'
 
 
 class Gender(models.TextChoices):

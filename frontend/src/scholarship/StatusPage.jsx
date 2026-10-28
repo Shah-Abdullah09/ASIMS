@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom'
 import { ReturnedBanner } from './ApplicationWizard.jsx'
-import { STATUS_LABELS } from './options.js'
+import { historyTitle, STATUS_LABELS } from './options.js'
 import { CHAIN, isReturned } from './returned.js'
 import { useApplication } from './useApplication.js'
 import './scholarship.css'
@@ -105,7 +105,7 @@ export default function StatusPage() {
         <ol className="timeline">
           {app.status_history.map((h) => (
             <li key={`${h.changed_at}-${h.to_status}`}>
-              <p><strong>{STATUS_LABELS[h.to_status]}</strong> <span className="field-hint">{when(h.changed_at)}, {h.changed_by_role}</span></p>
+              <p><strong>{historyTitle(h)}</strong> <span className="field-hint">{when(h.changed_at)} · now {STATUS_LABELS[h.to_status]}</span></p>
               {h.remarks && <p>{h.remarks}</p>}
             </li>
           ))}

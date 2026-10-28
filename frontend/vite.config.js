@@ -5,12 +5,13 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Forward API calls to the Django backend during development
-    proxy: { '/api': 'http://localhost:8000' },
+    // Forward API calls to the Django backend (the end-to-end test points this at its own backend)
+    proxy: { '/api': process.env.API_TARGET || 'http://localhost:8000' },
   },
   test: {
     environment: 'jsdom',
     setupFiles: './src/setupTests.js',
     globals: true,
+    exclude: ['node_modules/**', 'e2e/**'],
   },
 })

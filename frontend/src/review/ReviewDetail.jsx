@@ -127,7 +127,17 @@ function ActionPanel({ app, onSaved }) {
           {current?.action === 'verify' && !app.completion.complete && (
             <p className="notice">Verifying needs a complete application: {completionText(app.completion).toLowerCase()}.</p>
           )}
-          {(err('detail') || err('action')) && <p className="field-error" role="alert">{err('detail') || err('action')}</p>}
+          {errors.detail && <p className="field-error" role="alert">{err('detail')}</p>}
+          {errors.action && (
+            <div className="field-error" role="alert">
+              {[].concat(errors.action).length > 1 ? (
+                <>
+                  <p>{[].concat(errors.action)[0]}</p>
+                  <ul>{[].concat(errors.action).slice(1).map((m) => <li key={m}>{m}</li>)}</ul>
+                </>
+              ) : <p>{err('action')}</p>}
+            </div>
+          )}
           <button type="submit" disabled={saving}>{saving ? 'Saving...' : current?.label}</button>
         </>
       )}
@@ -136,7 +146,7 @@ function ActionPanel({ app, onSaved }) {
       <ol className="timeline">
         {app.status_history.map((h) => (
           <li key={`${h.changed_at}-${h.to_status}`}>
-            <p><strong>{O.STATUS_LABELS[h.to_status]}</strong> <span className="field-hint">{when(h.changed_at)}, {h.changed_by} ({h.changed_by_role})</span></p>
+            <p><strong>{O.historyTitle(h)}</strong> <span className="field-hint">{h.changed_by}, {when(h.changed_at)} · now {O.STATUS_LABELS[h.to_status]}</span></p>
             {h.percentage != null && <p className="field-hint">Percentage: {h.percentage}%</p>}
             {h.remarks && <p>{h.remarks}</p>}
           </li>

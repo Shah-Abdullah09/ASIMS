@@ -9,3 +9,9 @@ dist/
 .pytest_cache/
 .vscode/
 docs/Cred.md
+# End-to-end test run (throwaway database, uploads, screenshots and reports)
+backend/e2e.sqlite3
+backend/e2e-media/
+frontend/e2e/screenshots/
+frontend/playwright-report/
+frontend/test-results/

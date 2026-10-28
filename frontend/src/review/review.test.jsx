@@ -228,7 +228,8 @@ test('an action is saved with remarks and added to the history', async () => {
   expect(calls.find((c) => c.method === 'POST').body).toEqual({ action: 'return', remarks: 'Bank statement is unreadable.' })
   const history = screen.getByRole('heading', { name: 'History' }).nextElementSibling
   expect(within(history).getByText('Bank statement is unreadable.')).toBeInTheDocument()
-  expect(within(history).getByText(/Sana Placement \(Placement Officer\)/)).toBeInTheDocument()
+  expect(within(history).getByText('Returned for corrections by Placement Officer')).toBeInTheDocument()
+  expect(within(history).getByText(/Sana Placement, .* · now Returned to student/)).toBeInTheDocument()
 })
 
 test('the office marks the original received with a date, and can undo it', async () => {

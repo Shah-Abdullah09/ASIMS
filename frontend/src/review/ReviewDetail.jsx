@@ -8,7 +8,7 @@ import * as O from '../scholarship/options.js'
 import '../scholarship/scholarship.css'
 import { completionText } from './format.js'
 import { AwardLetterPanel, FeeAdjustmentFacts, FinancePanel } from './finance.jsx'
-import { FileReview, FlagsPanel, InterviewForm, ReviewChip } from './panels.jsx'
+import { DocumentCheckPanel, FileReview, FlagsPanel, InterviewForm, ReviewChip } from './panels.jsx'
 import { PLACEMENT, QUEUES } from './roles.js'
 
 const ROLE_TITLES = { father: 'Father', mother: 'Mother', guardian: 'Guardian' }
@@ -442,6 +442,10 @@ export default function ReviewDetail() {
             <h3>Statement of purpose</h3>
             <p className="prose">{app.statement_of_purpose || '—'}</p>
             <Facts items={[['Undertaking accepted', yesNo(app.undertaking_accepted)], ['Typed name', app.undertaking_name], ['Date', day(app.undertaking_date)]]} />
+          </Section>
+
+          <Section id="doccheck" title="Automatic document check">
+            <DocumentCheckPanel app={app} canRun={isPlacement} onChanged={setApp} />
           </Section>
 
           <Section id="documents" title="Documents">

@@ -242,3 +242,4 @@ div.person { border: 1px solid var(--border); border-radius: 8px; padding: 4px 1
 .award-letter .actions { margin: 8px 0; }
 .signed-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 8px; }
 .signed-form label { display: flex; flex-direction: column; gap: 4px; }
+.checks li.unknown::before { content: '?'; color: var(--text); }

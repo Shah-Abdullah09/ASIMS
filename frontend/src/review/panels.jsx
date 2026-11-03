@@ -170,3 +170,61 @@ export function InterviewForm({ app, onSaved }) {
     </form>
   )
 }
+
+const CHECK_STATE = { true: ['done', 'Found'], false: ['pending', 'Not found, check the document yourself'], null: ['unknown', 'Could not read'] }
+
+/** The automatic document check (OCR): advice for the person verifying the documents, never a decision. */
+export function DocumentCheckPanel({ app, canRun, onChanged }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const check = app.document_check
+
+  async function run() {
+    setBusy(true)
+    setError('')
+    try {
+      onChanged(await api(`/scholarships/review/applications/${app.id}/document-check/`, { method: 'POST' }))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <p className="field-hint">
+        ASIMS reads the CNIC copies and salary documents and compares them with the form. Automatic reading can miss
+        text, so this is only advice: always look at the documents yourself.
+      </p>
+      {!check ? <p>Not run yet.</p> : (
+        <>
+          <p className="field-hint">
+            Last run {when(check.ran_at)} by {check.ran_by}: {check.summary.matched} found, {check.summary.not_found} not
+            found, {check.summary.unreadable} could not be read.
+          </p>
+          {check.summary.engine_missing && (
+            <p className="notice">The OCR program (Tesseract) is not installed on the server, so photos and scanned images
+              could not be read. PDFs with text were still checked.</p>
+          )}
+          <ul className="checks">
+            {check.items.map((item) => {
+              const [cls, text] = CHECK_STATE[String(item.found)]
+              return (
+                <li key={item.label} className={cls}>
+                  <strong>{item.label}</strong>: {item.expected} <span className="field-hint">({text})</span>
+                </li>
+              )
+            })}
+          </ul>
+        </>
+      )}
+      {canRun && (
+        <button type="button" className="secondary" disabled={busy} onClick={run}>
+          {busy ? 'Reading documents...' : check ? 'Run the check again' : 'Run document check'}
+        </button>
+      )}
+      {error && <p className="field-error" role="alert">{error}</p>}
+    </>
+  )
+}

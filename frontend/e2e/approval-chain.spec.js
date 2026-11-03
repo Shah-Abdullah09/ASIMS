@@ -86,6 +86,10 @@ test('a scholarship case goes through the whole approval chain', async ({ page }
 
   // ---------- 2. The student sees what to fix, corrects only that, and resubmits ----------
   await login(page, 'student@e2e.test')
+  await page.getByRole('link', { name: /^Notifications, \d+ unread$/ }).click()
+  await expect(page.getByRole('button', { name: /was returned to you for corrections/ })).toBeVisible()
+  await shot(page, 'student-notifications')
+  await page.goto('/dashboard')
   await page.getByRole('link', { name: 'Scholarship applications' }).click()
   await shot(page, 'student-home-make-corrections')
   await page.getByRole('link', { name: 'Make corrections' }).click()

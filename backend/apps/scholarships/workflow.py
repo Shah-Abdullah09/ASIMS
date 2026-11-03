@@ -16,6 +16,7 @@ from apps.workflow.engine import Transition, Workflow
 
 from .choices import ApplicationStatus as S
 from .access import PLACEMENT
+from .alerts import case_moved
 from .emails import notify_student
 from .letters import issue_award_letter
 from .models import Application, StatusChange
@@ -120,7 +121,7 @@ def perform(app_id, action, user, *, remarks='', percentage=None, request=None):
     """Take `action` on the application as `user` and record it. The row is locked first, so when two people
     act at once the second gets a WorkflowError ('stage_conflict') instead of moving the case twice."""
     with transaction.atomic():
-        app = (Application.objects.select_for_update(of=('self',)).select_related('student', 'cycle')
+        app = (Application.objects.select_for_update(of=('self',)).select_related('student__department', 'cycle')
                .get(pk=app_id))
         transition = CHAIN.find(user, app, app.status, action)
         remarks = (remarks or '').strip()
@@ -149,6 +150,7 @@ def perform(app_id, action, user, *, remarks='', percentage=None, request=None):
         if after := AFTER.get((transition.action, transition.source)):
             after(app, user)
         transaction.on_commit(lambda: notify_student(app, change))
+        case_moved(app, change, user)
         record(AuditAction.WORKFLOW_ACTION, request=request, actor=user, target=app, action=transition.action,
                from_status=transition.source, to_status=transition.target, remarks=remarks, percentage=percentage)
     return app

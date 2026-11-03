@@ -2,13 +2,15 @@
 from datetime import date
 
 import pytest
+from django.core import mail
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import Role
+from apps.audit.models import AuditAction, AuditLog
 from apps.workflow.engine import WorkflowError
 
 from .models import Application, AwardLetter, FeeAdjustment, scholarship_amount
-from .test_review import cs, cycle, make_user, submitted_application, temp_media  # noqa: F401
+from .test_review import act, client_for, cs, cycle, make_user, submitted_application, temp_media  # noqa: F401
 from .workflow import CHAIN, available_actions, perform
 
 
@@ -81,3 +83,82 @@ def test_finance_cannot_act_before_the_vc_approves(cycle, cs, finance):
     with pytest.raises(WorkflowError) as exc:
         perform(app_id, 'record_fee_adjustment', finance)
     assert exc.value.code == 'stage_conflict'
+
+
+# ---------- Finance API ----------
+
+FEE = '/api/v1/scholarships/review/applications/{}/fee-adjustment/'
+
+
+@pytest.fixture
+def vc_approved(cycle, cs, django_capture_on_commit_callbacks):
+    """(student client, id) of a CS case the VC approved at 50% through the API (so the letter exists)."""
+    student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
+    Application.objects.filter(pk=app_id).update(status='vc_review', scholarship_percentage=50)
+    vc = client_for(make_user('vc@au.edu.pk', role=Role.VICE_CHANCELLOR))
+    with django_capture_on_commit_callbacks(execute=True):
+        act(vc, app_id, 'approve')
+    return student_api, app_id
+
+
+@pytest.fixture
+def finance_api(finance):
+    return client_for(finance)
+
+
+def record_fee(client, app_id, **over):
+    data = {'semester_fee': 145001, 'voucher_number': 'CH-2026-0042',
+            'adjusted_on': date.today().isoformat(), 'remarks': '', **over}
+    return client.post(FEE.format(app_id), data, format='json')
+
+
+def test_finance_queue_and_letter(vc_approved, finance_api, cycle, cs):
+    _, app_id = vc_approved
+    _, other = submitted_application(cycle, cs, 'sara@gmail.com', 'Sara Ahmed', '2335901', '36302-7654321-2')
+    Application.objects.filter(pk=other).update(status='vc_review')
+    rows = finance_api.get('/api/v1/scholarships/review/applications/').json()['results']
+    assert [r['id'] for r in rows] == [app_id]
+    assert finance_api.get(f'/api/v1/scholarships/review/applications/{other}/').status_code == 404
+    detail = finance_api.get(f'/api/v1/scholarships/review/applications/{app_id}/').json()
+    assert detail['available_actions'][0]['action'] == 'record_fee_adjustment' and detail['fee_adjustment'] is None
+    assert finance_api.get(f'/api/v1/scholarships/award-letters/{app_id}/').status_code == 200
+
+
+def test_recording_the_adjustment_completes_the_case(vc_approved, finance_api, django_capture_on_commit_callbacks):
+    student_api, app_id = vc_approved
+    mail.outbox.clear()
+    with django_capture_on_commit_callbacks(execute=True):
+        response = record_fee(finance_api, app_id, remarks='Adjusted in the Fall-26 voucher.')
+    assert response.status_code == 200
+    data = response.json()
+    assert data['status'] == 'completed' and data['available_actions'] == []
+    assert {k: data['fee_adjustment'][k] for k in ('semester_fee', 'percentage', 'scholarship_amount', 'fee_payable')} \
+        == {'semester_fee': 145001, 'percentage': 50, 'scholarship_amount': 72501, 'fee_payable': 72500}
+    assert data['fee_adjustment']['recorded_by'] == 'Farah Finance'
+    assert data['status_history'][-1]['action'] == 'record_fee_adjustment'
+    (message,) = mail.outbox
+    assert 'Rs 72,501' in message.body and 'Rs 72,500' in message.body and 'CH-2026-0042' in message.body
+    entry = AuditLog.objects.get(action=AuditAction.FEE_ADJUSTMENT_RECORDED)
+    assert entry.details['scholarship_amount'] == 72501
+    mine = student_api.get(f'/api/v1/scholarships/applications/{app_id}/').json()
+    assert mine['status'] == 'completed' and mine['fee_adjustment']['fee_payable'] == 72500
+    assert mine['scholarship_percentage'] == 50  # still shown once completed
+    # Finance still sees it (completed), but it cannot be recorded twice
+    again = record_fee(finance_api, app_id)
+    assert again.status_code == 409
+
+
+@pytest.mark.parametrize('field,value', [('semester_fee', 0), ('voucher_number', '  '), ('adjusted_on', '2099-01-01'),
+                                         ('adjusted_on', '2020-01-01')])
+def test_adjustment_checks(vc_approved, finance_api, field, value):
+    _, app_id = vc_approved
+    response = record_fee(finance_api, app_id, **{field: value})
+    assert response.status_code == 400 and field in response.json()
+    assert Application.objects.get(pk=app_id).status == 'awaiting_fee_adjustment'
+
+
+def test_only_finance_records_the_fee(vc_approved, cs):
+    _, app_id = vc_approved
+    for role in [Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR]:
+        assert record_fee(client_for(make_user(f'{role}.f@au.edu.pk', role=role)), app_id).status_code == 403
+    assert record_fee(client_for(make_user('s@gmail.com', dept=cs)), app_id).status_code == 403

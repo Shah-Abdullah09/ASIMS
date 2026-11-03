@@ -52,7 +52,20 @@ def _approved(app, change):
             'The Finance Office will now adjust your fee; you can follow this in ASIMS.')
 
 
-EMAILS = {S.RETURNED: _returned, S.REJECTED: _rejected, S.AWAITING_FEE_ADJUSTMENT: _approved}
+def _completed(app, change):
+    adj = app.fee_adjustment
+    return (f'ASIMS: scholarship application #{app.pk} completed, fee adjusted',
+            f'Dear {app.applicant_name},\n\nThe Finance Office has adjusted your {app.cycle.name} semester fee for '
+            f'your need based financial grant (application {app.pk}).\n\n'
+            f'Semester tuition fee: Rs {adj.semester_fee:,}\n'
+            f'Scholarship ({adj.percentage}%): Rs {adj.scholarship_amount:,}\n'
+            f'Fee payable after adjustment: Rs {adj.fee_payable:,}\n'
+            f'Fee voucher / challan: {adj.voucher_number}\n\n'
+            'Your application is now complete.')
+
+
+EMAILS = {S.RETURNED: _returned, S.REJECTED: _rejected, S.AWAITING_FEE_ADJUSTMENT: _approved,
+          S.COMPLETED: _completed}
 
 
 def notify_student(app, change):

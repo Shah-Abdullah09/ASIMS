@@ -24,11 +24,13 @@ from .access import PLACEMENT, STAFF_ROLES, can_open, visible_cases
 from .checklist import build_checklist, max_files
 from .choices import ApplicationStatus, DocumentReview
 from .declarations import sync_declarations
-from .models import Application, ApplicationDocument, AwardLetter, Declaration, ScholarshipCycle, SectionFlag
+from .models import (Application, ApplicationDocument, AwardLetter, Declaration, FeeAdjustment, ScholarshipCycle,
+                     SectionFlag)
 from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentReviewSerializer, DocumentSerializer,
-                          DocumentUploadSerializer, FlagCreateSerializer, ForwardAllSerializer, InterviewSerializer,
+                          DocumentUploadSerializer, FeeAdjustmentSerializer, FlagCreateSerializer,
+                          ForwardAllSerializer, InterviewSerializer,
                           ReceiveSerializer, ReviewListSerializer,
                           SectionFlagSerializer, SignedLetterSerializer, StaffApplicationDetailSerializer,
                           scan_upload_allowed)
@@ -420,7 +422,8 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
 
     def get_queryset(self):
         qs = (visible_cases(self.request.user)
-              .select_related('cycle', 'student__department', 'reviewed_by', 'interview_recorded_by')
+              .select_related('cycle', 'student__department', 'reviewed_by', 'interview_recorded_by', 'award_letter',
+                              'fee_adjustment__recorded_by')
               .prefetch_related('declarations'))
         if self.action != 'list':
             return qs.prefetch_related(*DETAIL_PREFETCH, 'documents__uploaded_by')
@@ -600,4 +603,39 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
             if old:
                 transaction.on_commit(lambda: old[0].delete(old[1]))
         detail = self.get_queryset().get(pk=app.pk)
+        return Response(self.get_serializer(detail).data)
+
+    # ---------- Finance ----------
+
+    @action(detail=True, methods=['post'], url_path='fee-adjustment')
+    def fee_adjustment(self, request, pk=None):
+        """Finance records the fee adjustment of an approved case; the case is then Completed. The amounts are
+        calculated from the semester tuition fee and the approved percentage."""
+        if request.user.role != Role.FINANCE_OFFICER:
+            raise PermissionDenied('Only the Finance Office records fee adjustments.')
+        serializer = FeeAdjustmentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        with transaction.atomic():
+            self.get_object()  # 404 outside Finance's view
+            app = Application.objects.select_for_update().get(pk=pk)
+            if app.status != ApplicationStatus.AWAITING_FEE_ADJUSTMENT:
+                raise StageConflict('This case is not waiting for a fee adjustment. Reload the page.')
+            letter = getattr(app, 'award_letter', None)
+            if letter and data['adjusted_on'] < letter.issued_on:
+                raise ValidationError({'adjusted_on': 'The fee cannot be adjusted before the award was made.'})
+            adj = FeeAdjustment(application=app, semester_fee=data['semester_fee'],
+                                percentage=app.scholarship_percentage, voucher_number=data['voucher_number'],
+                                adjusted_on=data['adjusted_on'], remarks=data['remarks'], recorded_by=request.user)
+            adj.calculate()
+            adj.save()
+            record(AuditAction.FEE_ADJUSTMENT_RECORDED, request=request, target=adj, application=app.pk,
+                   semester_fee=adj.semester_fee, percentage=adj.percentage,
+                   scholarship_amount=adj.scholarship_amount, fee_payable=adj.fee_payable,
+                   voucher_number=adj.voucher_number)
+            if error := run_action(app.pk, 'record_fee_adjustment', request.user, request,
+                                   remarks=data['remarks'] or f'Fee adjusted, voucher {adj.voucher_number}.'):
+                transaction.set_rollback(True)
+                return error
+        detail = self.get_queryset().get(pk=pk)
         return Response(self.get_serializer(detail).data)

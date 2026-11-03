@@ -1,6 +1,8 @@
 import { Link, Navigate, Route, Routes } from 'react-router-dom'
 import logo from './assets/au-logo.png'
 import { useAuth } from './AuthContext.jsx'
+import NotificationBell from './notifications/NotificationBell.jsx'
+import NotificationsPage from './notifications/NotificationsPage.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Login from './pages/Login.jsx'
 import { ChangePassword, ForgotPassword, ResetPassword } from './pages/PasswordPages.jsx'
@@ -38,6 +40,7 @@ function AppHeader() {
         </span>
       </Link>
       {user && <span className="header-user">{user.full_name}</span>}
+      {user && <NotificationBell />}
     </header>
   )
 }
@@ -53,6 +56,7 @@ export default function App() {
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/account/password" element={<RequireAuth><ChangePassword /></RequireAuth>} />
+        <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
         <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/scholarships" element={<RequireAuth role="student"><ScholarshipHome /></RequireAuth>} />
         <Route path="/scholarships/:id/review" element={<RequireAuth role="student"><ApplicationReview /></RequireAuth>} />

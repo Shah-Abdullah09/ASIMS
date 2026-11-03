@@ -1,4 +1,5 @@
 """Reading documents for the automatic check (PDF text layer, OCR of images, missing engine)."""
+import os
 from io import BytesIO
 
 import pytest
@@ -57,7 +58,8 @@ def test_images_are_read_by_the_engine(tmp_path, monkeypatch):
     assert reading.status == ocr.READ and reading.text == 'Net pay 72,000'
 
 
-@pytest.mark.skipif(not ocr.engine_available(), reason='Tesseract is not installed on this machine')
+# Skipped on machines without Tesseract, but never on CI (CI installs it, so a green run proves real OCR works)
+@pytest.mark.skipif(not ocr.engine_available() and not os.getenv('CI'), reason='Tesseract is not installed here')
 def test_real_tesseract_reads_printed_digits(tmp_path):
     image = Image.new('RGB', (900, 120), 'white')
     try:

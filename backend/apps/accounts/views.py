@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core import signing
 from django.core.mail import send_mail
+from django.db.models import Q
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import AuthenticationFailed
@@ -152,7 +153,21 @@ class UserAdminViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.Re
 
     permission_classes = [has_role(Role.ADMINISTRATOR)]
     serializer_class = AdminUserSerializer
-    queryset = User.objects.select_related('department')
+
+    def get_queryset(self):
+        """?search= (name, email or Registration ID), ?role=, ?department=, ?active=true|false."""
+        qs = User.objects.select_related('department').order_by('email')
+        params = self.request.query_params
+        if search := params.get('search', '').strip():
+            qs = qs.filter(Q(email__icontains=search) | Q(full_name__icontains=search)
+                           | Q(registration_id__icontains=search))
+        if params.get('role'):
+            qs = qs.filter(role=params['role'])
+        if params.get('department'):
+            qs = qs.filter(department_id=params['department'])
+        if params.get('active') in ('true', 'false'):
+            qs = qs.filter(is_active=params['active'] == 'true')
+        return qs
 
     @staticmethod
     def _changes(validated):

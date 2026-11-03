@@ -302,6 +302,23 @@ class CycleSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'opens_on', 'closes_on']
 
 
+class CycleAdminSerializer(serializers.ModelSerializer):
+    """The Administrator's view of a cycle, with how many applications it has."""
+    applications = serializers.IntegerField(source='applications.count', read_only=True)
+
+    class Meta:
+        model = m.ScholarshipCycle
+        fields = ['id', 'name', 'opens_on', 'closes_on', 'is_active', 'applications', 'created_at']
+        read_only_fields = ['created_at']
+
+    def validate(self, attrs):
+        opens = attrs.get('opens_on', getattr(self.instance, 'opens_on', None))
+        closes = attrs.get('closes_on', getattr(self.instance, 'closes_on', None))
+        if opens and closes and closes < opens:
+            raise serializers.ValidationError({'closes_on': 'The closing date must be on or after the opening date.'})
+        return attrs
+
+
 class ApplicationListSerializer(serializers.ModelSerializer):
     cycle_name = serializers.CharField(source='cycle.name', read_only=True)
 

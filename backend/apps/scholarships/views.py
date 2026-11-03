@@ -29,6 +29,7 @@ from .doccheck import run_document_check
 from .models import (Application, ApplicationDocument, AwardLetter, Declaration, DocumentCheck, FeeAdjustment,
                      ScholarshipCycle, SectionFlag)
 from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
+                          CycleAdminSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentReviewSerializer, DocumentSerializer,
                           DocumentUploadSerializer, FeeAdjustmentSerializer, FlagCreateSerializer,
@@ -81,6 +82,33 @@ class OpenCycleListView(ListAPIView):
     def get_queryset(self):
         today = timezone.localdate()
         return ScholarshipCycle.objects.filter(is_active=True, opens_on__lte=today, closes_on__gte=today)
+
+
+class CycleAdminViewSet(viewsets.ModelViewSet):
+    """The Administrator manages scholarship cycles. A cycle with applications cannot be deleted; close it
+    (is_active false) instead."""
+
+    permission_classes = [has_role(Role.ADMINISTRATOR)]
+    serializer_class = CycleAdminSerializer
+    queryset = ScholarshipCycle.objects.all()
+
+    def _audit(self, cycle, change):
+        record(AuditAction.CYCLE_CHANGED, request=self.request, target=cycle, change=change, name=cycle.name,
+               opens_on=str(cycle.opens_on), closes_on=str(cycle.closes_on), is_active=cycle.is_active)
+
+    def perform_create(self, serializer):
+        self._audit(serializer.save(), 'created')
+
+    def perform_update(self, serializer):
+        self._audit(serializer.save(), 'updated')
+
+    def destroy(self, request, *args, **kwargs):
+        cycle = self.get_object()
+        if cycle.applications.exists():
+            raise ValidationError({'detail': 'This cycle has applications, so it cannot be deleted. Close it instead.'})
+        self._audit(cycle, 'deleted')
+        cycle.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AllCycleListView(ListAPIView):

@@ -1,15 +1,23 @@
+/* ASIMS theme: white and blue, matched to the Air University logo.
+   --brand #2086BF is the logo's blue (4.0:1 on white): header bar, borders, large headings only.
+   --accent #1A6FA0 is a deeper shade of it (5.5:1 on white) for links and small blue text;
+   --button-bg is the same shade so white button text stays readable in light and dark mode. */
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --brand: #2086bf;
+  --brand-ink: #ffffff;
+  --text: #33404d;
+  --text-h: #0f2236;
+  --bg: #ffffff;
+  --page-tint: #f3f8fc;
+  --border: #d3e3ef;
+  --code-bg: #eef5fa;
+  --accent: #1a6fa0;
+  --accent-bg: rgba(32, 134, 191, 0.08);
+  --accent-border: rgba(32, 134, 191, 0.45);
+  --button-bg: #1a6fa0;
+  --button-bg-hover: #145a82;
+  --focus: #145a82;
+  --shadow: rgba(15, 34, 54, 0.08) 0 6px 14px -4px, rgba(15, 34, 54, 0.05) 0 2px 4px -1px;
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -19,7 +27,7 @@
   letter-spacing: 0.18px;
   color-scheme: light dark;
   color: var(--text);
-  background: var(--bg);
+  background: var(--page-tint);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -32,21 +40,20 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
+    --brand: #2086bf;
+    --text: #c9d6e2;
+    --text-h: #f2f7fb;
+    --bg: #101b26;
+    --page-tint: #0b141d;
+    --border: #26394b;
+    --code-bg: #1a2a3a;
+    --accent: #7cc4ec;
+    --accent-bg: rgba(124, 196, 236, 0.12);
+    --accent-border: rgba(124, 196, 236, 0.5);
+    --button-bg: #1a6fa0;
+    --button-bg-hover: #2086bf;
+    --focus: #7cc4ec;
+    --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
 }
 
@@ -59,6 +66,7 @@ body {
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
+  background: var(--bg);
   border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
@@ -69,17 +77,17 @@ body {
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-h);
 }
 
 h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
+  font-size: 40px;
+  letter-spacing: -0.8px;
+  margin: 28px 0 20px;
   @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+    font-size: 30px;
+    margin: 20px 0 14px;
   }
 }
 h2 {
@@ -95,17 +103,137 @@ p {
   margin: 0;
 }
 
-code,
-.counter {
+a {
+  color: var(--accent);
+}
+
+code {
   font-family: var(--mono);
   display: inline-flex;
   border-radius: 4px;
   color: var(--text-h);
-}
-
-code {
   font-size: 15px;
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+/* ---------- header with the university logo ---------- */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 20px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  text-align: left;
+}
+.app-header .brand-logo {
+  height: 44px;
+  width: auto;
+  background: #fff;
+  border-radius: 6px;
+  padding: 3px 5px;
+}
+.app-header .brand-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.app-header .brand-name {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.app-header .brand-sub {
+  font-size: 13px;
+  opacity: 0.95;
+}
+.app-header .header-user {
+  margin-left: auto;
+  font-size: 14px;
+}
+@media (max-width: 600px) {
+  .app-header .brand-sub,
+  .app-header .header-user {
+    display: none;
+  }
+}
+
+/* ---------- simple pages: login, registration, dashboard, passwords ---------- */
+main:not(.sch-page) {
+  padding: 8px 20px 40px;
+  color: var(--text-h);
+}
+main:not(.sch-page) form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+  margin: 16px auto;
+  padding: 20px;
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--brand);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+main:not(.sch-page) label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+main:not(.sch-page) input,
+main:not(.sch-page) select {
+  font: inherit;
+  font-size: 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-h);
+}
+main:not(.sch-page) button {
+  font: inherit;
+  font-size: 16px;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--button-bg);
+  color: #fff;
+  cursor: pointer;
+}
+main:not(.sch-page) button:hover {
+  background: var(--button-bg-hover);
+}
+main:not(.sch-page) button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+main:not(.sch-page) p {
+  margin: 8px 0;
+}
+main:not(.sch-page) [role='alert'] {
+  color: #b42318;
+}
+@media (prefers-color-scheme: dark) {
+  main:not(.sch-page) [role='alert'] {
+    color: #fda29b;
+  }
+}
+.login-logo {
+  display: block;
+  height: 72px;
+  width: auto;
+  margin: 24px auto 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }

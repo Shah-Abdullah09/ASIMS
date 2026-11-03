@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { openProtectedFile } from '../api.js'
+import { FeeAdjustmentFacts } from '../review/finance.jsx'
 import { ReturnedBanner } from './ApplicationWizard.jsx'
 import { historyTitle, STATUS_LABELS } from './options.js'
 import { CHAIN, isReturned } from './returned.js'
@@ -33,6 +36,7 @@ function StageProgress({ app }) {
 export default function StatusPage() {
   const { id } = useParams()
   const { app, loadError } = useApplication(id)
+  const [fileError, setFileError] = useState('')
 
   if (loadError) return <main className="sch-page"><p className="field-error">{loadError}</p></main>
   if (!app) return <main className="sch-page"><p>Loading...</p></main>
@@ -53,7 +57,7 @@ export default function StatusPage() {
     },
   ].filter((x) => x.text)
 
-  const approved = app.status === 'awaiting_fee_adjustment'
+  const approved = ['awaiting_fee_adjustment', 'completed'].includes(app.status)
   const rejected = app.status === 'rejected'
 
   return (
@@ -70,8 +74,28 @@ export default function StatusPage() {
         <div className="decision" role="status">
           <p><strong>Approved by the Vice Chancellor.</strong></p>
           {app.scholarship_percentage != null && <p>Scholarship: {app.scholarship_percentage}% of the semester tuition fee.</p>}
-          <p>The Finance Office will now adjust your fee.</p>
+          <p>{app.status === 'completed' ? 'The Finance Office has adjusted your fee. Your application is complete.'
+            : 'The Finance Office will now adjust your fee.'}</p>
         </div>
+      )}
+      {app.award_letter && (
+        <section className="award-letter" aria-label="Award letter">
+          <h2>Award letter</h2>
+          <p>Reference {app.award_letter.reference}, issued {new Date(app.award_letter.issued_on).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.
+            {app.award_letter.signed_copy ? ' This is the signed copy from the Placement Office.'
+              : app.award_letter.signed_issued_on ? ' The Placement Office has issued the signed copy.'
+                : ' The Placement Office will also issue a signed copy.'}</p>
+          <button type="button" onClick={() => openProtectedFile(app.award_letter.download_url).catch((e) => setFileError(e.message))}>
+            {app.award_letter.signed_copy ? 'Download signed award letter' : 'Download award letter'}
+          </button>
+          {fileError && <p className="field-error" role="alert">{fileError}</p>}
+        </section>
+      )}
+      {app.fee_adjustment && (
+        <section aria-label="Fee adjustment">
+          <h2>Fee adjustment</h2>
+          <FeeAdjustmentFacts adj={app.fee_adjustment} />
+        </section>
       )}
       {rejected && app.review_remarks && (
         <div className="decision">

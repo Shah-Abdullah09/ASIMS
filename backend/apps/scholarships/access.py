@@ -9,14 +9,17 @@ PLACEMENT = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
 # Approvers see only the cases waiting at their own stage
 APPROVER_STAGE = {Role.DIRECTOR: ApplicationStatus.DIRECTOR_REVIEW, Role.REGISTRAR: ApplicationStatus.REGISTRAR_REVIEW,
                   Role.VICE_CHANCELLOR: ApplicationStatus.VC_REVIEW}
-STAFF_ROLES = (*PLACEMENT, Role.DAC_MEMBER, *APPROVER_STAGE)
+# Finance sees the approved cases waiting for the fee adjustment and the ones it has completed
+FINANCE_STAGES = (ApplicationStatus.AWAITING_FEE_ADJUSTMENT, ApplicationStatus.COMPLETED)
+STAFF_ROLES = (*PLACEMENT, Role.DAC_MEMBER, *APPROVER_STAGE, Role.FINANCE_OFFICER)
 
 
 def visible_cases(user):
     """Submitted applications this user may open (drafts are never shown to staff).
 
     Placement Office and Administrator: every stage. DAC member: cases of their own department while
-    they are at DAC review. Director, Registrar, Vice Chancellor: cases at their own review stage."""
+    they are at DAC review. Director, Registrar, Vice Chancellor: cases at their own review stage. Finance:
+    approved cases awaiting the fee adjustment, and completed ones."""
     cases = Application.objects.exclude(status=ApplicationStatus.DRAFT)
     if user.role in PLACEMENT:
         return cases
@@ -24,6 +27,8 @@ def visible_cases(user):
         return cases.filter(status=ApplicationStatus.DAC_REVIEW, student__department_id=user.department_id)
     if stage := APPROVER_STAGE.get(user.role):
         return cases.filter(status=stage)
+    if user.role == Role.FINANCE_OFFICER:
+        return cases.filter(status__in=FINANCE_STAGES)
     return cases.none()
 
 

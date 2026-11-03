@@ -69,6 +69,7 @@ export const STATUS_LABELS = {
   registrar_review: 'Registrar review',
   vc_review: 'VC review',
   awaiting_fee_adjustment: 'Awaiting fee adjustment',
+  completed: 'Completed',
   rejected: 'Rejected',
 }
 
@@ -83,6 +84,7 @@ export const ACTION_LABELS = {
   not_shortlisted: 'Not shortlisted',
   forward: 'Forwarded to the Director',
   approve: 'Approved',
+  record_fee_adjustment: 'Fee adjusted',
   status_change: 'Status changed',
 }
 

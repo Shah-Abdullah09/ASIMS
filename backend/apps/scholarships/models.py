@@ -10,7 +10,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.documents.paths import declaration_scan_path, scholarship_document_path
+from apps.documents.paths import award_letter_path, declaration_scan_path, scholarship_document_path
 
 from .choices import (PROFESSION_TEMPLATE, AccommodationStatus, AccommodationType, ApplicationStatus,
                       DeclarationTemplate, DocumentReview, FlagSection,
@@ -436,6 +436,60 @@ class SectionFlag(models.Model):
     @property
     def is_open(self):
         return self.resolved_at is None
+
+
+def scholarship_amount(semester_fee, percentage):
+    """Whole rupees, rounded half up: 50% of 45,001 is 22,501."""
+    return (semester_fee * percentage + 50) // 100
+
+
+class FeeAdjustment(models.Model):
+    """Finance's record of the fee adjustment that closes an approved case. No payment is made through ASIMS;
+    the amounts are calculated from the semester tuition fee Finance enters and the approved percentage."""
+    application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name='fee_adjustment')
+    semester_fee = models.PositiveBigIntegerField('semester tuition fee', validators=[MinValueValidator(1)])
+    percentage = models.PositiveSmallIntegerField(help_text='The approved percentage when the adjustment was made')
+    scholarship_amount = models.PositiveBigIntegerField()
+    fee_payable = models.PositiveBigIntegerField('fee payable after adjustment')
+    voucher_number = models.CharField('fee voucher / challan number', max_length=40)
+    adjusted_on = models.DateField()
+    remarks = models.TextField(blank=True)
+    recorded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                    related_name='recorded_fee_adjustments')
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'#{self.application_id}: Rs {self.scholarship_amount} off Rs {self.semester_fee}'
+
+    def calculate(self):
+        self.scholarship_amount = scholarship_amount(self.semester_fee, self.percentage)
+        self.fee_payable = self.semester_fee - self.scholarship_amount
+
+
+class AwardLetter(models.Model):
+    """The award letter, generated as a PDF when the VC approves. The Placement Office records when the signed
+    copy was issued and may upload its scan; the student then gets the signed scan instead of the PDF."""
+    application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name='award_letter')
+    reference = models.CharField(max_length=60, unique=True)
+    issued_on = models.DateField()
+    percentage = models.PositiveSmallIntegerField()
+    pdf = models.FileField(upload_to=award_letter_path, max_length=255)
+    generated_at = models.DateTimeField(auto_now_add=True)
+    signed_issued_on = models.DateField(null=True, blank=True)
+    signed_marked_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT,
+                                         related_name='marked_signed_letters')
+    signed_scan = models.FileField(upload_to=award_letter_path, max_length=255, blank=True)
+    signed_scan_original_name = models.CharField(max_length=255, blank=True)
+    signed_scan_content_type = models.CharField(max_length=50, blank=True)
+    signed_scan_size = models.PositiveIntegerField(null=True, blank=True)
+    signed_scan_uploaded_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return self.reference
+
+    @staticmethod
+    def reference_for(app):
+        return f'ASIMS/NBFG/{app.cycle.name}/{app.pk:04d}'
 
 
 class StatusChange(models.Model):

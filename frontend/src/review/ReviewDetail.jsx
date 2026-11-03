@@ -7,6 +7,7 @@ import { fileSize } from '../scholarship/files.js'
 import * as O from '../scholarship/options.js'
 import '../scholarship/scholarship.css'
 import { completionText } from './format.js'
+import { AwardLetterPanel, FeeAdjustmentFacts, FinancePanel } from './finance.jsx'
 import { FileReview, FlagsPanel, InterviewForm, ReviewChip } from './panels.jsx'
 import { PLACEMENT, QUEUES } from './roles.js'
 
@@ -57,8 +58,9 @@ function Section({ id, title, children }) {
 }
 
 /** The actions the server says this user may take at the current stage, with remarks and percentage. */
-function ActionPanel({ app, onSaved }) {
-  const actions = app.available_actions
+function ActionPanel({ app, onSaved, emptyText = 'You have no action at this stage.' }) {
+  // Finance completes a case through its own form (FinancePanel), not here
+  const actions = app.available_actions.filter((a) => a.action !== 'record_fee_adjustment')
   const [chosen, setChosen] = useState(actions[0]?.action || '')
   const [remarks, setRemarks] = useState('')
   const [percentage, setPercentage] = useState(app.scholarship_percentage ?? '')
@@ -97,7 +99,7 @@ function ActionPanel({ app, onSaved }) {
       {app.reviewed_at && <p className="field-hint">Last action {when(app.reviewed_at)} by {app.reviewed_by}</p>}
       {done && <p className="notice-ok" role="status">{done}</p>}
       {actions.length === 0 ? (
-        <p className="field-hint">You have no action at this stage.</p>
+        <p className="field-hint">{emptyText}</p>
       ) : (
         <>
           <div className="field">
@@ -256,6 +258,7 @@ export default function ReviewDetail() {
   const verifying = isPlacement && app.status === 'placement_verification'
   const canReceive = isPlacement && ['placement_verification', 'returned'].includes(app.status)
   const interviewing = user.role === 'dac_member' && app.status === 'dac_review'
+  const financing = user.role === 'finance_officer' && app.status === 'awaiting_fee_adjustment'
   const onActed = (updated) => (updated.left_queue ? setMoved(updated) : setApp(updated))
 
   return (
@@ -278,6 +281,16 @@ export default function ReviewDetail() {
           {(verifying || app.flags?.length > 0) && (
             <Section id="corrections" title="Corrections requested">
               <FlagsPanel app={app} canEdit={verifying} onChanged={load} />
+            </Section>
+          )}
+          {app.fee_adjustment && (
+            <Section id="fee" title="Fee adjustment">
+              <FeeAdjustmentFacts adj={app.fee_adjustment} />
+            </Section>
+          )}
+          {app.award_letter && (
+            <Section id="award-letter" title="Award letter">
+              <AwardLetterPanel app={app} canSign={isPlacement} onSaved={setApp} />
             </Section>
           )}
           {app.interview_date && (
@@ -474,7 +487,9 @@ export default function ReviewDetail() {
 
         <aside className="review-side">
           {interviewing && <InterviewForm app={app} onSaved={setApp} />}
-          <ActionPanel app={app} onSaved={onActed} />
+          {financing && <FinancePanel app={app} onSaved={setApp} />}
+          <ActionPanel app={app} onSaved={onActed}
+            emptyText={financing ? 'Record the fee adjustment above to complete the case.' : undefined} />
         </aside>
       </div>
     </main>

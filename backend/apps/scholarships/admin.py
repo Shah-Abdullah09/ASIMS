@@ -1,8 +1,9 @@
 from django.contrib import admin
 
-from .models import (Application, ApplicationDocument, AssetIncome, AssetWorth, Declaration, EarningMember,
-                     EducationRecord, HouseholdMember, LandHolding, ParentGuardian, PreviousScholarship,
-                     ScholarshipCycle, SectionFlag, StatusChange, StudyingMember, UtilityMonth, Vehicle)
+from .models import (Application, ApplicationDocument, AssetIncome, AssetWorth, AwardLetter, Declaration,
+                     EarningMember, EducationRecord, FeeAdjustment, HouseholdMember, LandHolding, ParentGuardian,
+                     PreviousScholarship, ScholarshipCycle, SectionFlag, StatusChange, StudyingMember, UtilityMonth,
+                     Vehicle)
 
 
 @admin.register(ScholarshipCycle)
@@ -49,6 +50,18 @@ def tabular(model_class):
     return type(f'{model_class.__name__}Inline', (admin.TabularInline,), {'model': model_class, 'extra': 0})
 
 
+class AwardLetterInline(ReadOnlyFileInline):
+    model = AwardLetter
+    fields = readonly_fields = ['reference', 'issued_on', 'percentage', 'generated_at', 'signed_issued_on',
+                                'signed_marked_by', 'signed_scan_original_name', 'signed_scan_uploaded_at']
+
+
+class FeeAdjustmentInline(ReadOnlyFileInline):
+    model = FeeAdjustment
+    fields = readonly_fields = ['semester_fee', 'percentage', 'scholarship_amount', 'fee_payable', 'voucher_number',
+                                'adjusted_on', 'remarks', 'recorded_by', 'recorded_at']
+
+
 @admin.register(Application)
 class ApplicationAdmin(admin.ModelAdmin):
     list_display = ['id', 'applicant_name', 'registration_id', 'cycle', 'student_department', 'status',
@@ -63,6 +76,7 @@ class ApplicationAdmin(admin.ModelAdmin):
     inlines = [tabular(m) for m in (HouseholdMember, EarningMember, StudyingMember, ParentGuardian, AssetIncome,
                                     UtilityMonth, Vehicle, LandHolding, AssetWorth, EducationRecord,
                                     PreviousScholarship)] + [DocumentInline, DeclarationInline, FlagInline,
+                                                             AwardLetterInline, FeeAdjustmentInline,
                                                              StatusHistoryInline]
 
     @admin.display(description='Department', ordering='student__department__name')

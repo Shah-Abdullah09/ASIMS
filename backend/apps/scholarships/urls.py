@@ -16,5 +16,7 @@ urlpatterns = [
          name='declaration-scan-download'),
     path('scholarships/declarations/<int:declaration_id>/receive/', views.DeclarationReceiveView.as_view(),
          name='declaration-receive'),
+    path('scholarships/award-letters/<int:app_id>/', views.AwardLetterDownloadView.as_view(),
+         name='award-letter-download'),
     path('', include(router.urls)),
 ]

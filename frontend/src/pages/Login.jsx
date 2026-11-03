@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import logo from '../assets/au-logo.png'
 import { useAuth } from '../AuthContext.jsx'
 
 export default function Login() {
@@ -22,6 +23,7 @@ export default function Login() {
 
   return (
     <main>
+      <img className="login-logo" src={logo} alt="Air University logo" />
       <h1>ASIMS Login</h1>
       <form onSubmit={onSubmit}>
         <label>

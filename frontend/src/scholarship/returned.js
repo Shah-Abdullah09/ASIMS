@@ -12,4 +12,4 @@ export function returnReason(app) {
 
 /** The approval chain in order, for the student's progress line. */
 export const CHAIN = ['placement_verification', 'dac_review', 'awaiting_forwarding', 'director_review',
-  'registrar_review', 'vc_review', 'awaiting_fee_adjustment']
+  'registrar_review', 'vc_review', 'awaiting_fee_adjustment', 'completed']

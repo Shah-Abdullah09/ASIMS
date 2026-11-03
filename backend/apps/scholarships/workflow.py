@@ -1,8 +1,8 @@
 """The scholarship approval chain:
 
 Draft -> Placement verification -> DAC review -> Awaiting forwarding -> Director review -> Registrar review
--> VC review -> Awaiting fee adjustment (Finance, Phase 4). Placement may return a case to the student, who
-resubmits it. A rejection at any stage ends the case.
+-> VC review -> Awaiting fee adjustment -> Completed (Finance records the fee adjustment). Placement may return
+a case to the student, who resubmits it. A rejection at any stage ends the case.
 
 The Administrator sees every stage but takes only the Placement Office actions."""
 from django.db import transaction
@@ -17,6 +17,7 @@ from apps.workflow.engine import Transition, Workflow
 from .choices import ApplicationStatus as S
 from .access import PLACEMENT
 from .emails import notify_student
+from .letters import issue_award_letter
 from .models import Application, StatusChange
 from .verification import check_returnable, check_verifiable, resolve_flags
 
@@ -48,6 +49,8 @@ TRANSITIONS = [
     Transition('reject', 'Reject', S.REGISTRAR_REVIEW, S.REJECTED, (Role.REGISTRAR,), remarks_required=True),
     Transition('approve', 'Approve', S.VC_REVIEW, S.AWAITING_FEE_ADJUSTMENT, (Role.VICE_CHANCELLOR,)),
     Transition('reject', 'Reject', S.VC_REVIEW, S.REJECTED, (Role.VICE_CHANCELLOR,), remarks_required=True),
+    Transition('record_fee_adjustment', 'Record fee adjustment', S.AWAITING_FEE_ADJUSTMENT, S.COMPLETED,
+               (Role.FINANCE_OFFICER,)),
 ]
 
 CHAIN = Workflow(TRANSITIONS, S.choices)
@@ -64,15 +67,29 @@ def check_interviewed(app):
         raise ValidationError({'action': 'Record the interview date and remarks before shortlisting.'})
 
 
+def check_fee_adjustment(app):
+    if not hasattr(app, 'fee_adjustment'):
+        raise ValidationError({'action': 'Enter the fee adjustment details first.'})
+
+
 CHECKS = {
+    ('record_fee_adjustment', S.AWAITING_FEE_ADJUSTMENT): check_fee_adjustment,
     ('shortlist', S.DAC_REVIEW): check_interviewed,
     ('verify', S.PLACEMENT_VERIFICATION): check_verifiable,
     ('return', S.PLACEMENT_VERIFICATION): check_returnable,
 }
 
 # Follow-up work done in the same transaction after a transition, keyed the same way: (app, user)
+def after_vc_approval(app, user):
+    """The award letter is generated as soon as the Vice Chancellor approves."""
+    letter = issue_award_letter(app)
+    record(AuditAction.AWARD_LETTER_GENERATED, actor=user, target=letter, application=app.pk,
+           reference=letter.reference, percentage=letter.percentage)
+
+
 AFTER = {
     ('resubmit', S.RETURNED): resolve_flags,
+    ('approve', S.VC_REVIEW): after_vc_approval,
 }
 
 

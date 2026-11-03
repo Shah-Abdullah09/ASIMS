@@ -356,6 +356,21 @@ class SectionFlagSerializer(serializers.ModelSerializer):
                   'resolved_by', 'resolution']
 
 
+def award_letter_info(app, staff=False):
+    """The award letter as the screens need it, or None before the VC approves."""
+    letter = getattr(app, 'award_letter', None)
+    if letter is None:
+        return None
+    url = f'/api/v1/scholarships/award-letters/{app.pk}/'
+    info = {'reference': letter.reference, 'issued_on': letter.issued_on, 'percentage': letter.percentage,
+            'signed_issued_on': letter.signed_issued_on, 'signed_copy': bool(letter.signed_scan),
+            'download_url': url}
+    if staff:
+        info['generated_url'] = f'{url}?version=generated'
+        info['signed_scan_name'] = letter.signed_scan_original_name
+    return info
+
+
 class ApplicationDetailSerializer(serializers.ModelSerializer):
     cycle = CycleSerializer(read_only=True)
     department = serializers.CharField(source='student.department.name', default=None, read_only=True)
@@ -367,9 +382,11 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     status_history = StatusChangeSerializer(many=True, read_only=True)
     flags = SectionFlagSerializer(many=True, read_only=True)
     unlocked = serializers.SerializerMethodField()
+    award_letter = serializers.SerializerMethodField()
+    fee_adjustment = serializers.SerializerMethodField()
 
     # Staff notes the student does not see; the percentage is shown once the VC has approved it
-    PERCENTAGE_FINAL = {ApplicationStatus.AWAITING_FEE_ADJUSTMENT}
+    PERCENTAGE_FINAL = {ApplicationStatus.AWAITING_FEE_ADJUSTMENT, ApplicationStatus.COMPLETED}
     student_view = True
 
     class Meta:
@@ -395,6 +412,18 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
             for change in data['status_history']:
                 change['percentage'] = None
         return data
+
+    def get_fee_adjustment(self, obj) -> dict | None:
+        adj = getattr(obj, 'fee_adjustment', None)
+        if adj is None:
+            return None
+        return {'semester_fee': adj.semester_fee, 'percentage': adj.percentage,
+                'scholarship_amount': adj.scholarship_amount, 'fee_payable': adj.fee_payable,
+                'voucher_number': adj.voucher_number, 'adjusted_on': adj.adjusted_on, 'remarks': adj.remarks,
+                'recorded_by': adj.recorded_by.full_name, 'recorded_at': adj.recorded_at}
+
+    def get_award_letter(self, obj) -> dict | None:
+        return award_letter_info(obj, staff=not self.student_view)
 
     def get_unlocked(self, obj) -> dict:
         """What the student may still change: None means everything (a draft)."""
@@ -583,4 +612,36 @@ class ForwardAllSerializer(serializers.Serializer):
     def validate_confirm(self, value):
         if not value:
             raise serializers.ValidationError('Confirm that every shortlisted case should go to the Director.')
+        return value
+
+
+class SignedLetterSerializer(serializers.Serializer):
+    """Placement records that the signed letter was issued; the scan of it is optional."""
+    signed_issued_on = serializers.DateField()
+    file = serializers.FileField(required=False)
+
+    def validate_signed_issued_on(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError('The date cannot be in the future.')
+        letter = self.context['letter']
+        if value < letter.issued_on:
+            raise serializers.ValidationError('The signed letter cannot be issued before the letter was generated.')
+        return value
+
+
+class FeeAdjustmentSerializer(serializers.Serializer):
+    """What Finance enters; the amounts are calculated (percentage from the approvals)."""
+    semester_fee = serializers.IntegerField(min_value=1, max_value=10_000_000)
+    voucher_number = serializers.CharField(max_length=40)
+    adjusted_on = serializers.DateField()
+    remarks = serializers.CharField(required=False, allow_blank=True, max_length=2000, default='')
+
+    def validate_voucher_number(self, value):
+        if not value.strip():
+            raise serializers.ValidationError('Enter the fee voucher or challan number.')
+        return value.strip()
+
+    def validate_adjusted_on(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError('The date cannot be in the future.')
         return value

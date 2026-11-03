@@ -7,6 +7,7 @@ from django.core.mail import send_mail
 
 from .choices import ApplicationStatus as S
 from .choices import DocumentReview
+from .models import AwardLetter
 
 log = logging.getLogger(__name__)
 
@@ -46,10 +47,25 @@ def _approved(app, change):
             f'Dear {app.applicant_name},\n\nYour {app.cycle.name} need based financial grant application '
             f'(number {app.pk}) has been approved by the Vice Chancellor.\n\n'
             f'Approved scholarship: {app.scholarship_percentage}% of the semester tuition fee.\n\n'
+            f'Your award letter (reference {AwardLetter.reference_for(app)}) can be downloaded from the application '
+            'status page in ASIMS. The Placement Office will also issue the signed copy.\n\n'
             'The Finance Office will now adjust your fee; you can follow this in ASIMS.')
 
 
-EMAILS = {S.RETURNED: _returned, S.REJECTED: _rejected, S.AWAITING_FEE_ADJUSTMENT: _approved}
+def _completed(app, change):
+    adj = app.fee_adjustment
+    return (f'ASIMS: scholarship application #{app.pk} completed, fee adjusted',
+            f'Dear {app.applicant_name},\n\nThe Finance Office has adjusted your {app.cycle.name} semester fee for '
+            f'your need based financial grant (application {app.pk}).\n\n'
+            f'Semester tuition fee: Rs {adj.semester_fee:,}\n'
+            f'Scholarship ({adj.percentage}%): Rs {adj.scholarship_amount:,}\n'
+            f'Fee payable after adjustment: Rs {adj.fee_payable:,}\n'
+            f'Fee voucher / challan: {adj.voucher_number}\n\n'
+            'Your application is now complete.')
+
+
+EMAILS = {S.RETURNED: _returned, S.REJECTED: _rejected, S.AWAITING_FEE_ADJUSTMENT: _approved,
+          S.COMPLETED: _completed}
 
 
 def notify_student(app, change):

@@ -297,3 +297,24 @@ test('status page shows the approved percentage after the VC approves', async ()
   expect(await screen.findByText('Approved by the Vice Chancellor.')).toBeInTheDocument()
   expect(screen.getByText('Scholarship: 50% of the semester tuition fee.')).toBeInTheDocument()
 })
+
+// ---------- Phase 4: award letter and fee adjustment for the student ----------
+
+test('a completed application offers the signed award letter and shows the fee adjustment', async () => {
+  mockApi([['GET', '/scholarships/applications/7/', () => ({ body: app({
+    status: 'completed', is_editable: false, submitted_at: '2026-10-20T09:00:00Z', scholarship_percentage: 50,
+    completion: { form_submitted: true, declarations_required: 0, scans_uploaded: true, physical_copies_received: true, complete: true },
+    award_letter: { reference: 'ASIMS/NBFG/Fall-26/0007', issued_on: '2026-10-29', percentage: 50,
+      signed_issued_on: '2026-10-30', signed_copy: true, download_url: '/api/v1/scholarships/award-letters/7/' },
+    fee_adjustment: { semester_fee: 150000, percentage: 50, scholarship_amount: 75000, fee_payable: 75000,
+      voucher_number: 'CH-26-0007', adjusted_on: '2026-11-01', remarks: '', recorded_by: 'Farah Finance' },
+  }) })]])
+  renderAt('/scholarships/7/status')
+  expect(await screen.findByText(/has adjusted your fee/)).toBeInTheDocument()
+  const letter = screen.getByRole('region', { name: 'Award letter' })
+  expect(within(letter).getByText(/ASIMS\/NBFG\/Fall-26\/0007/)).toBeInTheDocument()
+  expect(within(letter).getByRole('button', { name: 'Download signed award letter' })).toBeInTheDocument()
+  const fee = screen.getByRole('region', { name: 'Fee adjustment' })
+  expect(within(fee).getByText('CH-26-0007')).toBeInTheDocument()
+  expect(within(fee).getAllByText('Rs. 75,000')).toHaveLength(2)
+})

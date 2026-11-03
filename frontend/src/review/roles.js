@@ -1,6 +1,6 @@
 /** Staff roles and the work queue each one sees (the server decides which cases are in it). */
 export const PLACEMENT = ['placement_officer', 'administrator']
-export const STAFF = [...PLACEMENT, 'dac_member', 'director', 'registrar', 'vice_chancellor']
+export const STAFF = [...PLACEMENT, 'dac_member', 'director', 'registrar', 'vice_chancellor', 'finance_officer']
 
 export const QUEUES = {
   placement_officer: {
@@ -18,6 +18,10 @@ export const QUEUES = {
   director: { title: 'Director review queue', hint: 'Shortlisted cases waiting for your approval.' },
   registrar: { title: 'Registrar review queue', hint: 'Cases approved by the Director, waiting for your approval.' },
   vice_chancellor: { title: 'VC review queue', hint: 'Cases approved by the Registrar, waiting for the final approval.' },
+  finance_officer: {
+    title: 'Fee adjustment queue',
+    hint: 'Scholarships approved by the Vice Chancellor: record the fee adjustment. Completed cases stay listed for reference.',
+  },
 }
 
 export const FLAG_SECTIONS = [

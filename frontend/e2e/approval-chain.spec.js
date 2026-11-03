@@ -44,6 +44,9 @@ async function act(page, action, { remarks = '', percentage } = {}) {
 
 test('a scholarship case goes through the whole approval chain', async ({ page }) => {
   page.on('dialog', (dialog) => dialog.accept()) // "Forward all" asks for confirmation
+  await page.goto('/login')
+  await expect(page.getByRole('img', { name: 'Air University logo' })).toBeVisible()
+  await shot(page, 'login-page')
 
   // ---------- 1. Placement checks the files, flags a section and returns the case ----------
   await login(page, 'placement@e2e.test')
@@ -158,5 +161,41 @@ test('a scholarship case goes through the whole approval chain', async ({ page }
   await page.goto('/scholarships/1/status')
   await expect(page.getByText('Approved by the Vice Chancellor.')).toBeVisible()
   await expect(page.getByText('Scholarship: 50% of the semester tuition fee.')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Download award letter' })).toBeVisible()
   await shot(page, 'student-approved-status')
+
+  // ---------- 8. Placement records the signed award letter with its scan ----------
+  await login(page, 'placement@e2e.test')
+  await openCase(page, 'My work: Scholarship applications')
+  const letter = page.getByRole('region', { name: 'Award letter' })
+  await expect(letter).toContainText('ASIMS/NBFG/Fall-26/0001')
+  await letter.getByLabel(/Scan of the signed letter/).setInputFiles({ ...PDF, name: 'signed-award-letter.pdf' })
+  await letter.getByRole('button', { name: 'Record signed letter' }).click()
+  await expect(letter.getByRole('button', { name: 'Open signed scan' })).toBeVisible()
+  await shot(page, 'placement-signed-letter')
+
+  // ---------- 9. Finance records the fee adjustment and completes the case ----------
+  await login(page, 'finance@e2e.test')
+  await openCase(page, 'My work: Fee adjustment queue')
+  const fee = page.getByRole('form', { name: 'Fee adjustment' })
+  await fee.getByLabel('Semester tuition fee (Rs)').fill('150000')
+  await fee.getByLabel('Fee voucher / challan number').fill('CH-2026-0001')
+  await expect(fee.getByRole('table', { name: 'Calculated amounts' })).toContainText('75,000')
+  await shot(page, 'finance-fee-adjustment')
+  await fee.getByRole('button', { name: 'Record fee adjustment' }).click()
+  await expect(page.getByRole('region', { name: 'Fee adjustment' })).toContainText('CH-2026-0001')
+  await shot(page, 'finance-completed')
+
+  // ---------- 10. The student sees the completed case and the signed letter ----------
+  await login(page, 'student@e2e.test')
+  await page.goto('/scholarships/1/status')
+  await expect(page.getByText(/has adjusted your fee/)).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Fee adjustment' })).toContainText('CH-2026-0001')
+  // Headless Chrome downloads PDFs instead of showing them, so check the protected file itself was served
+  const served = page.waitForResponse((r) => r.url().includes('/api/v1/scholarships/award-letters/1/'))
+  await page.getByRole('button', { name: 'Download signed award letter' }).click()
+  const response = await served
+  expect(response.status()).toBe(200)
+  expect(response.headers()['content-type']).toBe('application/pdf')
+  await shot(page, 'student-completed')
 })

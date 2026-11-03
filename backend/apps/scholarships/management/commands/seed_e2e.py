@@ -20,6 +20,7 @@ ACCOUNTS = [
     ('director@e2e.test', 'Director Aslam', Role.DIRECTOR),
     ('registrar@e2e.test', 'Registrar Nadia', Role.REGISTRAR),
     ('vc@e2e.test', 'Vice Chancellor Tariq', Role.VICE_CHANCELLOR),
+    ('finance@e2e.test', 'Farah Finance', Role.FINANCE_OFFICER),
     ('student@e2e.test', 'Ali Khan', Role.STUDENT),
 ]
 

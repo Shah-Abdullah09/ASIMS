@@ -1,19 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext.jsx'
-import { QUEUES } from '../review/roles.js'
-
-const ROLE_LABELS = {
-  student: 'Student',
-  placement_officer: 'Placement Officer',
-  dac_member: 'DAC Member',
-  dic: 'Departmental Internship Coordinator',
-  faculty_supervisor: 'Faculty Supervisor',
-  director: 'Director',
-  registrar: 'Registrar',
-  vice_chancellor: 'Vice Chancellor',
-  finance_officer: 'Finance Officer',
-  administrator: 'Administrator',
-}
+import { QUEUES, REPORT_ROLES } from '../review/roles.js'
+import { ROLE_LABELS } from '../roles.js'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
@@ -40,6 +28,12 @@ export default function Dashboard() {
         </p>
       ) : (
         <p>Your role-specific tools will appear here as each module is built.</p>
+      )}
+      {REPORT_ROLES.includes(user.role) && (
+        <p><Link to="/reports">Scholarship reports</Link>: figures by stage and department{user.role === 'placement_officer' || user.role === 'administrator' ? ', CSV download' : ''}.</p>
+      )}
+      {user.role === 'administrator' && (
+        <p><Link to="/manage/users">Manage</Link>: staff accounts, departments, scholarship cycles and the audit log.</p>
       )}
       <p><Link to="/account/password">Change password</Link></p>
       <button onClick={onLogout}>Log out</button>

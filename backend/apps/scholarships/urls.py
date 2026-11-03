@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from . import views
+from . import reports, views
 
 router = DefaultRouter()
 router.register('scholarships/applications', views.StudentApplicationViewSet, basename='scholarship-applications')
@@ -19,5 +19,7 @@ urlpatterns = [
          name='declaration-receive'),
     path('scholarships/award-letters/<int:app_id>/', views.AwardLetterDownloadView.as_view(),
          name='award-letter-download'),
+    path('reports/scholarships/', reports.ScholarshipSummaryView.as_view(), name='scholarship-summary'),
+    path('reports/scholarships.csv', reports.ScholarshipExportView.as_view(), name='scholarship-export'),
     path('', include(router.urls)),
 ]

@@ -17,6 +17,21 @@ QUEUE_ROLE = {
 }
 
 
+# How each stage reads in the student's notification: "Your application 7 ..."
+STUDENT_PHRASE = {
+    S.PLACEMENT_VERIFICATION: 'is with the Placement Office for verification',
+    S.RETURNED: 'was returned to you for corrections',
+    S.DAC_REVIEW: 'is with the Departmental Admission Committee',
+    S.AWAITING_FORWARDING: 'was shortlisted by the Departmental Admission Committee',
+    S.DIRECTOR_REVIEW: 'is with the Director',
+    S.REGISTRAR_REVIEW: 'is with the Registrar',
+    S.VC_REVIEW: 'is with the Vice Chancellor',
+    S.AWAITING_FEE_ADJUSTMENT: 'was approved by the Vice Chancellor',
+    S.COMPLETED: 'is complete: your fee has been adjusted',
+    S.REJECTED: 'was not approved',
+}
+
+
 def queue_recipients(app, stage):
     """Active staff whose queue the case has entered (DAC members only of the student's department)."""
     role = QUEUE_ROLE.get(stage)
@@ -31,7 +46,8 @@ def queue_recipients(app, stage):
 def case_moved(app, change, actor):
     label = change.get_to_status_display()
     student_body = change.remarks if change.remarks and change.action != 'submit' else ''
-    notify([app.student], f'Your application {app.pk} is now at {label}', student_body,
+    phrase = STUDENT_PHRASE.get(change.to_status, f'is now at {label}')
+    notify([app.student], f'Your application {app.pk} {phrase}', student_body,
            f'/scholarships/{app.pk}/status', email=False)
     staff = queue_recipients(app, change.to_status).exclude(pk=actor.pk)
     department = app.student.department.name if app.student.department else 'no department'

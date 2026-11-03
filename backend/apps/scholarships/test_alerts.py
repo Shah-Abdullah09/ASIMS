@@ -57,9 +57,10 @@ def test_each_queue_hears_about_its_cases(cycle, cs, officer, staff, django_capt
     assert titles(staff['finance'])[-1].endswith('(Awaiting fee adjustment)')
 
     # The student is told in the app at every stage
-    stages = [t.split(' is now at ')[1] for t in titles(student)]
-    assert stages == ['Placement verification', 'DAC review', 'Awaiting forwarding', 'Director review',
-                      'Registrar review', 'VC review', 'Awaiting fee adjustment']
+    assert titles(student) == [f'Your application {app_id} {phrase}' for phrase in (
+        'is with the Placement Office for verification', 'is with the Departmental Admission Committee',
+        'was shortlisted by the Departmental Admission Committee', 'is with the Director', 'is with the Registrar',
+        'is with the Vice Chancellor', 'was approved by the Vice Chancellor')]
     assert Notification.objects.filter(recipient=student).first().link == f'/scholarships/{app_id}/status'
 
 
@@ -77,7 +78,7 @@ def test_returned_and_signed_letter_reach_the_student(cycle, cs, officer, django
     officer.post(f'{REVIEW}{app_id}/flags/', {'section': 'income', 'note': 'Net pay missing.'}, format='json')
     act(officer, app_id, 'return', 'Please add the net pay.')
     last = Notification.objects.filter(recipient=student).first()
-    assert last.title.endswith('Returned to student') and last.body == 'Please add the net pay.'
+    assert last.title.endswith('was returned to you for corrections') and last.body == 'Please add the net pay.'
 
     Application.objects.filter(pk=app_id).update(status='vc_review', scholarship_percentage=50)
     with django_capture_on_commit_callbacks(execute=True):

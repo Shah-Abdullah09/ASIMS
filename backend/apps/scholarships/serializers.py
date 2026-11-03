@@ -18,6 +18,7 @@ from .calculations import summarize
 from .declarations import render, sync_declarations
 from .submission import completion
 from .validators import cnic_validator, landline_validator, mobile_validator
+from .doccheck import summary as doccheck_summary
 from .verification import unlocked
 from .workflow import available_actions
 
@@ -535,12 +536,21 @@ class StaffApplicationDetailSerializer(ApplicationDetailSerializer):
     documents = serializers.SerializerMethodField()
     declarations = serializers.SerializerMethodField()
     available_actions = serializers.SerializerMethodField()
+    document_check = serializers.SerializerMethodField()
     interview_recorded_by = serializers.CharField(source='interview_recorded_by.full_name', default=None,
                                                   read_only=True)
     student_view = False
 
     class Meta(ApplicationDetailSerializer.Meta):
         exclude = []
+
+    def get_document_check(self, obj) -> dict | None:
+        """The latest automatic document check, if one has been run."""
+        check = obj.document_checks.select_related('ran_by').first()
+        if check is None:
+            return None
+        return {'ran_at': check.ran_at, 'ran_by': check.ran_by.full_name, 'files': check.files,
+                'items': check.items, 'summary': doccheck_summary(check.files, check.items)}
 
     def get_available_actions(self, obj) -> list[dict]:
         request = self.context.get('request')

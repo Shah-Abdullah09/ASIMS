@@ -24,8 +24,9 @@ from .access import PLACEMENT, STAFF_ROLES, can_open, visible_cases
 from .checklist import build_checklist, max_files
 from .choices import ApplicationStatus, DocumentReview
 from .declarations import sync_declarations
-from .models import (Application, ApplicationDocument, AwardLetter, Declaration, FeeAdjustment, ScholarshipCycle,
-                     SectionFlag)
+from .doccheck import run_document_check
+from .models import (Application, ApplicationDocument, AwardLetter, Declaration, DocumentCheck, FeeAdjustment,
+                     ScholarshipCycle, SectionFlag)
 from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentReviewSerializer, DocumentSerializer,
@@ -638,4 +639,21 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
                 transaction.set_rollback(True)
                 return error
         detail = self.get_queryset().get(pk=pk)
+        return Response(self.get_serializer(detail).data)
+
+    # ---------- automatic document check (OCR) ----------
+
+    @action(detail=True, methods=['post'], url_path='document-check')
+    def document_check(self, request, pk=None):
+        """The Placement Office runs the automatic check of the CNIC copies and salary documents. It only advises:
+        the results are hints for the person verifying the documents."""
+        if request.user.role not in PLACEMENT:
+            raise PermissionDenied('Only the Placement Office runs the document check.')
+        app = self.get_object()
+        files, items = run_document_check(app)
+        check = DocumentCheck.objects.create(application=app, ran_by=request.user, files=files, items=items)
+        record(AuditAction.DOCUMENT_CHECK_RUN, request=request, target=check, application=app.pk,
+               matched=sum(1 for i in items if i['found'] is True),
+               not_found=sum(1 for i in items if i['found'] is False))
+        detail = self.get_queryset().get(pk=app.pk)
         return Response(self.get_serializer(detail).data)

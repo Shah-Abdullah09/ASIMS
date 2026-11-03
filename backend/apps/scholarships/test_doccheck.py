@@ -2,12 +2,15 @@
 import pytest
 from django.core.files.base import ContentFile
 
+from apps.accounts.models import Role
+from apps.audit.models import AuditAction, AuditLog
 from apps.documents import ocr
 from apps.documents.tests import pdf_with_text
 
 from .doccheck import find_amounts, find_cnics, name_found, run_document_check, summary
 from .models import Application, ApplicationDocument
-from .test_review import cs, cycle, submitted_application, temp_media  # noqa: F401
+from .test_review import (REVIEW, STUDENT_BASE, client_for, cs, cycle, make_user,  # noqa: F401
+                          submitted_application, temp_media)
 
 
 @pytest.mark.parametrize('text,cnics', [
@@ -58,3 +61,23 @@ def test_unreadable_documents_give_no_verdict(cycle, cs, monkeypatch):
     files, items = run_document_check(Application.objects.get(pk=app_id))
     assert items and all(i['found'] is None for i in items)
     assert all(f['status'] in (ocr.NO_TEXT, ocr.FAILED) for f in files)
+
+
+# ---------- API ----------
+
+def test_placement_runs_the_check_and_staff_see_the_latest(cycle, cs):
+    student_api, app_id = submitted_application(cycle, cs, 'ali@gmail.com')
+    replace_with_pdf(app_id, 'cnic_copies', 'ALI KHAN 36302-1234567-1')
+    officer = client_for(make_user('po@au.edu.pk', role=Role.PLACEMENT_OFFICER))
+    assert officer.get(f'{REVIEW}{app_id}/').json()['document_check'] is None
+    response = officer.post(f'{REVIEW}{app_id}/document-check/')
+    assert response.status_code == 200
+    check = response.json()['document_check']
+    assert check['summary']['matched'] >= 2 and check['ran_by']
+    assert any(i['label'] == "Applicant's CNIC" and i['found'] for i in check['items'])
+    assert AuditLog.objects.filter(action=AuditAction.DOCUMENT_CHECK_RUN).count() == 1
+    assert 'document_check' not in student_api.get(f'{STUDENT_BASE}{app_id}/').json()
+    Application.objects.filter(pk=app_id).update(status='director_review')
+    director = client_for(make_user('d@au.edu.pk', role=Role.DIRECTOR))
+    assert director.get(f'{REVIEW}{app_id}/').json()['document_check']['summary']['matched'] >= 2
+    assert director.post(f'{REVIEW}{app_id}/document-check/').status_code == 403

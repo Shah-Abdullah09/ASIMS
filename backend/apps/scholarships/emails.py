@@ -7,6 +7,7 @@ from django.core.mail import send_mail
 
 from .choices import ApplicationStatus as S
 from .choices import DocumentReview
+from .models import AwardLetter
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +47,8 @@ def _approved(app, change):
             f'Dear {app.applicant_name},\n\nYour {app.cycle.name} need based financial grant application '
             f'(number {app.pk}) has been approved by the Vice Chancellor.\n\n'
             f'Approved scholarship: {app.scholarship_percentage}% of the semester tuition fee.\n\n'
+            f'Your award letter (reference {AwardLetter.reference_for(app)}) can be downloaded from the application '
+            'status page in ASIMS. The Placement Office will also issue the signed copy.\n\n'
             'The Finance Office will now adjust your fee; you can follow this in ASIMS.')
 
 

@@ -356,6 +356,21 @@ class SectionFlagSerializer(serializers.ModelSerializer):
                   'resolved_by', 'resolution']
 
 
+def award_letter_info(app, staff=False):
+    """The award letter as the screens need it, or None before the VC approves."""
+    letter = getattr(app, 'award_letter', None)
+    if letter is None:
+        return None
+    url = f'/api/v1/scholarships/award-letters/{app.pk}/'
+    info = {'reference': letter.reference, 'issued_on': letter.issued_on, 'percentage': letter.percentage,
+            'signed_issued_on': letter.signed_issued_on, 'signed_copy': bool(letter.signed_scan),
+            'download_url': url}
+    if staff:
+        info['generated_url'] = f'{url}?version=generated'
+        info['signed_scan_name'] = letter.signed_scan_original_name
+    return info
+
+
 class ApplicationDetailSerializer(serializers.ModelSerializer):
     cycle = CycleSerializer(read_only=True)
     department = serializers.CharField(source='student.department.name', default=None, read_only=True)
@@ -367,6 +382,7 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
     status_history = StatusChangeSerializer(many=True, read_only=True)
     flags = SectionFlagSerializer(many=True, read_only=True)
     unlocked = serializers.SerializerMethodField()
+    award_letter = serializers.SerializerMethodField()
 
     # Staff notes the student does not see; the percentage is shown once the VC has approved it
     PERCENTAGE_FINAL = {ApplicationStatus.AWAITING_FEE_ADJUSTMENT}
@@ -395,6 +411,9 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
             for change in data['status_history']:
                 change['percentage'] = None
         return data
+
+    def get_award_letter(self, obj) -> dict | None:
+        return award_letter_info(obj, staff=not self.student_view)
 
     def get_unlocked(self, obj) -> dict:
         """What the student may still change: None means everything (a draft)."""
@@ -583,4 +602,18 @@ class ForwardAllSerializer(serializers.Serializer):
     def validate_confirm(self, value):
         if not value:
             raise serializers.ValidationError('Confirm that every shortlisted case should go to the Director.')
+        return value
+
+
+class SignedLetterSerializer(serializers.Serializer):
+    """Placement records that the signed letter was issued; the scan of it is optional."""
+    signed_issued_on = serializers.DateField()
+    file = serializers.FileField(required=False)
+
+    def validate_signed_issued_on(self, value):
+        if value > timezone.localdate():
+            raise serializers.ValidationError('The date cannot be in the future.')
+        letter = self.context['letter']
+        if value < letter.issued_on:
+            raise serializers.ValidationError('The signed letter cannot be issued before the letter was generated.')
         return value

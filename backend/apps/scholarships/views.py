@@ -24,13 +24,14 @@ from .access import PLACEMENT, STAFF_ROLES, can_open, visible_cases
 from .checklist import build_checklist, max_files
 from .choices import ApplicationStatus, DocumentReview
 from .declarations import sync_declarations
-from .models import Application, ApplicationDocument, Declaration, ScholarshipCycle, SectionFlag
+from .models import Application, ApplicationDocument, AwardLetter, Declaration, ScholarshipCycle, SectionFlag
 from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentReviewSerializer, DocumentSerializer,
                           DocumentUploadSerializer, FlagCreateSerializer, ForwardAllSerializer, InterviewSerializer,
                           ReceiveSerializer, ReviewListSerializer,
-                          SectionFlagSerializer, StaffApplicationDetailSerializer, scan_upload_allowed)
+                          SectionFlagSerializer, SignedLetterSerializer, StaffApplicationDetailSerializer,
+                          scan_upload_allowed)
 from .submission import readiness
 from .verification import section_unlocked, slot_unlocked
 from .workflow import perform
@@ -331,6 +332,27 @@ class DocumentDownloadView(APIView):
         return response
 
 
+class AwardLetterDownloadView(APIView):
+    """The award letter for its student or staff who can open the case. Once the Placement Office has uploaded
+    the signed scan, that is what is served; staff can still ask for the generated one (?version=generated)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, app_id):
+        letter = get_object_or_404(AwardLetter.objects.select_related('application'), application_id=app_id)
+        if not can_open(request.user, letter.application):
+            raise NotFound()
+        generated = request.query_params.get('version') == 'generated' and request.user.role != Role.STUDENT
+        if letter.signed_scan and not generated:
+            name = f'award-letter-signed-{letter.application_id}{letter.signed_scan.name[-4:]}'
+            file, content_type = letter.signed_scan, letter.signed_scan_content_type
+        else:
+            name, file, content_type = f'award-letter-{letter.application_id}.pdf', letter.pdf, 'application/pdf'
+        response = FileResponse(file.open('rb'), content_type=content_type, filename=name, as_attachment=False)
+        response['Cache-Control'] = 'private, no-store'
+        return response
+
+
 class DeclarationScanDownloadView(APIView):
     """Streams a Form 2 scan to its student or to reviewing staff."""
 
@@ -541,3 +563,41 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
             error = run_action(app_id, 'forward', request.user, request, remarks='Forwarded with all shortlisted cases.')
             (skipped if error else forwarded).append(app_id)
         return Response({'forwarded': forwarded, 'skipped': skipped})
+
+    # ---------- award letter ----------
+
+    @action(detail=True, methods=['post'], url_path='award-letter/signed',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def signed_letter(self, request, pk=None):
+        """Placement records the date the signed award letter was issued, optionally with its scan. A new scan
+        replaces the previous one."""
+        if request.user.role not in PLACEMENT:
+            raise PermissionDenied('Only the Placement Office records the signed letter.')
+        app = self.get_object()
+        letter = getattr(app, 'award_letter', None)
+        if letter is None:
+            raise ValidationError({'detail': 'There is no award letter yet; it is generated when the VC approves.'})
+        serializer = SignedLetterSerializer(data=request.data, context={'letter': letter})
+        serializer.is_valid(raise_exception=True)
+        letter.signed_issued_on = serializer.validated_data['signed_issued_on']
+        letter.signed_marked_by = request.user
+        old = None
+        if upload := serializer.validated_data.get('file'):
+            try:
+                content_type, ext = inspect_upload(upload)
+            except ValidationError as exc:
+                raise ValidationError({'file': exc.detail})
+            old = (letter.signed_scan.storage, letter.signed_scan.name) if letter.signed_scan else None
+            letter.signed_scan_original_name = upload.name[:255]
+            upload.name = stored_name(ext)
+            letter.signed_scan = upload
+            letter.signed_scan_content_type, letter.signed_scan_size = content_type, upload.size
+            letter.signed_scan_uploaded_at = timezone.now()
+        with transaction.atomic():
+            letter.save()
+            record(AuditAction.SIGNED_LETTER_ISSUED, request=request, target=letter, application=app.pk,
+                   signed_issued_on=str(letter.signed_issued_on), scan=bool(upload))
+            if old:
+                transaction.on_commit(lambda: old[0].delete(old[1]))
+        detail = self.get_queryset().get(pk=app.pk)
+        return Response(self.get_serializer(detail).data)

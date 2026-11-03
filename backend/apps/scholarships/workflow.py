@@ -17,6 +17,7 @@ from apps.workflow.engine import Transition, Workflow
 from .choices import ApplicationStatus as S
 from .access import PLACEMENT
 from .emails import notify_student
+from .letters import issue_award_letter
 from .models import Application, StatusChange
 from .verification import check_returnable, check_verifiable, resolve_flags
 
@@ -79,8 +80,16 @@ CHECKS = {
 }
 
 # Follow-up work done in the same transaction after a transition, keyed the same way: (app, user)
+def after_vc_approval(app, user):
+    """The award letter is generated as soon as the Vice Chancellor approves."""
+    letter = issue_award_letter(app)
+    record(AuditAction.AWARD_LETTER_GENERATED, actor=user, target=letter, application=app.pk,
+           reference=letter.reference, percentage=letter.percentage)
+
+
 AFTER = {
     ('resubmit', S.RETURNED): resolve_flags,
+    ('approve', S.VC_REVIEW): after_vc_approval,
 }
 
 

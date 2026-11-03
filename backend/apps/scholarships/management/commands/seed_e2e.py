@@ -21,6 +21,7 @@ ACCOUNTS = [
     ('registrar@e2e.test', 'Registrar Nadia', Role.REGISTRAR),
     ('vc@e2e.test', 'Vice Chancellor Tariq', Role.VICE_CHANCELLOR),
     ('finance@e2e.test', 'Farah Finance', Role.FINANCE_OFFICER),
+    ('admin@e2e.test', 'Asma Administrator', Role.ADMINISTRATOR),
     ('student@e2e.test', 'Ali Khan', Role.STUDENT),
 ]
 

@@ -129,7 +129,7 @@ export default function ManageUsers() {
       <h1>Users</h1>
       <ManageNav />
 
-      <form className="decision-panel" onSubmit={create} aria-label="Add a staff account" noValidate>
+      <form className="decision-panel manage-form" onSubmit={create} aria-label="Add a staff account" noValidate>
         <h2>Add a staff account</h2>
         <p className="field-hint">Leave the password empty to email an invitation; the person then sets their own password.</p>
         <div className="manage-grid">
@@ -140,7 +140,7 @@ export default function ManageUsers() {
               {Object.entries(ROLE_LABELS).filter(([v]) => v !== 'student').map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
-          <label>Department{DEPARTMENT_ROLES.includes(form.role) && <span className="req"> * required</span>}
+          <label><span>Department{DEPARTMENT_ROLES.includes(form.role) && <span className="req"> * required</span>}</span>
             <select value={form.department} onChange={set('department')}>
               <option value="">None</option>
               {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}

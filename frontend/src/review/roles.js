@@ -1,6 +1,8 @@
 /** Staff roles and the work queue each one sees (the server decides which cases are in it). */
 export const PLACEMENT = ['placement_officer', 'administrator']
 export const STAFF = [...PLACEMENT, 'dac_member', 'director', 'registrar', 'vice_chancellor', 'finance_officer']
+/** Who can open the scholarship reports (the DAC works case by case). */
+export const REPORT_ROLES = STAFF.filter((role) => role !== 'dac_member')
 
 export const QUEUES = {
   placement_officer: {

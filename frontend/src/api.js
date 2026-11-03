@@ -73,3 +73,17 @@ export async function openProtectedFile(path) {
   link.click()
   setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
 }
+
+/** Save a protected file (e.g. a CSV report) under `filename`. */
+export async function downloadProtectedFile(path, filename) {
+  const url = path.startsWith('/api/v1') ? path : `/api/v1${path}`
+  const res = await fetch(url, { headers: authHeaders() })
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null))
+  const objectUrl = URL.createObjectURL(await res.blob())
+  const link = document.createElement('a')
+  link.href = objectUrl
+  link.download = filename
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+}
+

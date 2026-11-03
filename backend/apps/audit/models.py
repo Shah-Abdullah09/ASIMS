@@ -33,6 +33,7 @@ class AuditAction(models.TextChoices):
     SIGNED_LETTER_ISSUED = 'signed_letter_issued', 'Signed award letter issued'
     FEE_ADJUSTMENT_RECORDED = 'fee_adjustment_recorded', 'Fee adjustment recorded'
     DOCUMENT_CHECK_RUN = 'document_check_run', 'Automatic document check run'
+    CYCLE_CHANGED = 'cycle_changed', 'Scholarship cycle added or changed'
     WORKFLOW_ACTION = 'workflow_action', 'Workflow action'
 
 

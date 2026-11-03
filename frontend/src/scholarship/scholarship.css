@@ -243,3 +243,16 @@ div.person { border: 1px solid var(--border); border-radius: 8px; padding: 4px 1
 .signed-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-top: 8px; }
 .signed-form label { display: flex; flex-direction: column; gap: 4px; }
 .checks li.unknown::before { content: '?'; color: var(--text); }
+
+/* Phase 7: manage area and reports */
+.manage-nav a.active { font-weight: 700; text-decoration: none; border-bottom: 3px solid var(--brand); }
+.manage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.manage-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 15px; font-weight: 500; }
+.manage-form > button { align-self: flex-start; }
+.audit-details { font-size: 13px; overflow-wrap: anywhere; max-width: 320px; }
+.stat-tiles { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0 8px; }
+.stat-tile { border: 1px solid var(--border); border-top: 3px solid var(--brand); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; background: var(--bg); }
+.stat-value { font-size: 26px; font-weight: 700; color: var(--text-h); font-variant-numeric: tabular-nums; }
+.stat-label { font-size: 14px; color: var(--text); }
+.report-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 16px; }
+.list-table .num { text-align: right; font-variant-numeric: tabular-nums; }

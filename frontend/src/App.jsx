@@ -3,6 +3,9 @@ import logo from './assets/au-logo.png'
 import { useAuth } from './AuthContext.jsx'
 import NotificationBell from './notifications/NotificationBell.jsx'
 import NotificationsPage from './notifications/NotificationsPage.jsx'
+import { AuditLogPage, ManageCycles, ManageDepartments } from './manage/ManageRecords.jsx'
+import ManageUsers from './manage/ManageUsers.jsx'
+import ReportsPage from './reports/ReportsPage.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Login from './pages/Login.jsx'
 import { ChangePassword, ForgotPassword, ResetPassword } from './pages/PasswordPages.jsx'
@@ -16,7 +19,7 @@ import ScholarshipHome from './scholarship/ScholarshipHome.jsx'
 import StatusPage from './scholarship/StatusPage.jsx'
 import ReviewDetail from './review/ReviewDetail.jsx'
 import ReviewList from './review/ReviewList.jsx'
-import { STAFF } from './review/roles.js'
+import { REPORT_ROLES, STAFF } from './review/roles.js'
 
 /** Only signed-in users; with `role`, only that role (or one of a list of roles). */
 function RequireAuth({ children, role }) {
@@ -57,6 +60,12 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/account/password" element={<RequireAuth><ChangePassword /></RequireAuth>} />
         <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
+        <Route path="/manage" element={<Navigate to="/manage/users" replace />} />
+        <Route path="/manage/users" element={<RequireAuth role="administrator"><ManageUsers /></RequireAuth>} />
+        <Route path="/manage/departments" element={<RequireAuth role="administrator"><ManageDepartments /></RequireAuth>} />
+        <Route path="/manage/cycles" element={<RequireAuth role="administrator"><ManageCycles /></RequireAuth>} />
+        <Route path="/manage/audit" element={<RequireAuth role="administrator"><AuditLogPage /></RequireAuth>} />
+        <Route path="/reports" element={<RequireAuth role={REPORT_ROLES}><ReportsPage /></RequireAuth>} />
         <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
         <Route path="/scholarships" element={<RequireAuth role="student"><ScholarshipHome /></RequireAuth>} />
         <Route path="/scholarships/:id/review" element={<RequireAuth role="student"><ApplicationReview /></RequireAuth>} />

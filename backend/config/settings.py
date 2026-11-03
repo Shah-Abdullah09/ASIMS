@@ -13,8 +13,13 @@ def env_bool(name, default=False):
     return os.getenv(name, str(default)).lower() in ('1', 'true', 'yes')
 
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-only-insecure-key-change-me')
+DEV_SECRET_KEY = 'dev-only-insecure-key-change-me'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', DEV_SECRET_KEY)
 DEBUG = env_bool('DJANGO_DEBUG', True)
+if not DEBUG and (SECRET_KEY in (DEV_SECRET_KEY, 'change-me') or len(SECRET_KEY) < 40):
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured('Set DJANGO_SECRET_KEY to a long random value (40+ characters) before running with '
+                               'DJANGO_DEBUG=False.')
 ALLOWED_HOSTS = [h for h in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') if h]
 
 INSTALLED_APPS = [
@@ -126,8 +131,10 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
-    # Only views that opt in are throttled; "forgot password" is limited per client address
-    'DEFAULT_THROTTLE_RATES': {'password_forgot': '5/hour'},
+    # Only views that opt in are throttled, per client address
+    'DEFAULT_THROTTLE_RATES': {'password_forgot': os.getenv('RATE_PASSWORD_FORGOT', '5/hour'),
+                               'login': os.getenv('RATE_LOGIN', '10/minute'),
+                               'register': os.getenv('RATE_REGISTER', '10/hour')},
 }
 
 SIMPLE_JWT = {
@@ -152,3 +159,17 @@ EMAIL_TIMEOUT = 20
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'ASIMS <no-reply@localhost>')
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend' if EMAIL_HOST
                           else 'django.core.mail.backends.console.EmailBackend')
+
+# ---------- production security (on automatically when DEBUG is off) ----------
+# Behind a proxy that terminates HTTPS (e.g. nginx), set DJANGO_BEHIND_PROXY=True so Django sees the request as secure.
+if env_bool('DJANGO_BEHIND_PROXY', False):
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_SSL_REDIRECT = not DEBUG and env_bool('DJANGO_SSL_REDIRECT', True)
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SECURE_HSTS_SECONDS = 0 if DEBUG else int(os.getenv('DJANGO_HSTS_SECONDS', str(60 * 60 * 24 * 30)))  # 30 days
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG and env_bool('DJANGO_HSTS_SUBDOMAINS', False)
+SECURE_REFERRER_POLICY = 'same-origin'
+

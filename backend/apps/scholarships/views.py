@@ -3,6 +3,8 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -29,6 +31,7 @@ from .doccheck import run_document_check
 from .models import (Application, ApplicationDocument, AwardLetter, Declaration, DocumentCheck, FeeAdjustment,
                      ScholarshipCycle, SectionFlag)
 from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerializer, ApplicationDetailSerializer,
+                          CycleAdminSerializer,
                           ApplicationListSerializer, CycleSerializer, DeclarationSerializer,
                           DocumentReplaceSerializer, DocumentReviewSerializer, DocumentSerializer,
                           DocumentUploadSerializer, FeeAdjustmentSerializer, FlagCreateSerializer,
@@ -83,6 +86,33 @@ class OpenCycleListView(ListAPIView):
         return ScholarshipCycle.objects.filter(is_active=True, opens_on__lte=today, closes_on__gte=today)
 
 
+class CycleAdminViewSet(viewsets.ModelViewSet):
+    """The Administrator manages scholarship cycles. A cycle with applications cannot be deleted; close it
+    (is_active false) instead."""
+
+    permission_classes = [has_role(Role.ADMINISTRATOR)]
+    serializer_class = CycleAdminSerializer
+    queryset = ScholarshipCycle.objects.all()
+
+    def _audit(self, cycle, change):
+        record(AuditAction.CYCLE_CHANGED, request=self.request, target=cycle, change=change, name=cycle.name,
+               opens_on=str(cycle.opens_on), closes_on=str(cycle.closes_on), is_active=cycle.is_active)
+
+    def perform_create(self, serializer):
+        self._audit(serializer.save(), 'created')
+
+    def perform_update(self, serializer):
+        self._audit(serializer.save(), 'updated')
+
+    def destroy(self, request, *args, **kwargs):
+        cycle = self.get_object()
+        if cycle.applications.exists():
+            raise ValidationError({'detail': 'This cycle has applications, so it cannot be deleted. Close it instead.'})
+        self._audit(cycle, 'deleted')
+        cycle.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class AllCycleListView(ListAPIView):
     """Every scholarship cycle, newest first, for the staff review filters."""
 
@@ -100,6 +130,8 @@ def stored_name(ext):
 class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
                                 viewsets.GenericViewSet):
     """A student's own applications. Other students' applications are invisible (404)."""
+
+    queryset = Application.objects.none()  # for the API schema; get_queryset limits it to the student
 
     permission_classes = [has_role(Role.STUDENT)]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -326,6 +358,7 @@ class DocumentDownloadView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     def get(self, request, doc_id):
         doc = get_object_or_404(ApplicationDocument.objects.select_related('application'), pk=doc_id)
         if not can_open(request.user, doc.application):
@@ -342,6 +375,7 @@ class AwardLetterDownloadView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     def get(self, request, app_id):
         letter = get_object_or_404(AwardLetter.objects.select_related('application'), application_id=app_id)
         if not can_open(request.user, letter.application):
@@ -362,6 +396,7 @@ class DeclarationScanDownloadView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     def get(self, request, declaration_id):
         declaration = get_object_or_404(Declaration.objects.select_related('application'), pk=declaration_id)
         if not can_open(request.user, declaration.application):
@@ -389,6 +424,7 @@ class DeclarationReceiveView(APIView):
             raise ValidationError({'detail': 'The case has left Placement verification, so Form 2 receipts are final.'})
         return declaration
 
+    @extend_schema(request=ReceiveSerializer, responses=DeclarationSerializer)
     def post(self, request, declaration_id):
         declaration = self._declaration(declaration_id)
         serializer = ReceiveSerializer(data=request.data)
@@ -400,6 +436,7 @@ class DeclarationReceiveView(APIView):
                application=declaration.application_id, received_on=str(declaration.physical_received_on))
         return Response(DeclarationSerializer(declaration).data)
 
+    @extend_schema(request=None, responses=DeclarationSerializer)
     def delete(self, request, declaration_id):
         declaration = self._declaration(declaration_id)
         declaration.physical_received_on = None
@@ -417,6 +454,7 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
     CNIC or email), ordering (submitted_at, -submitted_at, applicant_name)."""
 
     permission_classes = [has_role(*STAFF_ROLES)]
+    queryset = Application.objects.none()  # for the API schema; get_queryset applies access.visible_cases
     ORDERINGS = {'submitted_at', '-submitted_at', 'applicant_name', '-applicant_name'}
 
     def get_serializer_class(self):

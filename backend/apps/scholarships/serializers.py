@@ -358,13 +358,14 @@ class StatusChangeSerializer(serializers.ModelSerializer):
         fields = ['from_status', 'from_label', 'to_status', 'to_label', 'action', 'remarks', 'percentage',
                   'changed_by', 'changed_by_role', 'changed_at']
 
-    def get_changed_by_role(self, obj):
+    def get_changed_by_role(self, obj) -> str:
         # The role held when acting; a person's role may change later
         return Role(obj.role).label if obj.role in Role.values else obj.role
 
 
 class SectionFlagSerializer(serializers.ModelSerializer):
     section_label = serializers.CharField(source='get_section_display', read_only=True)
+    is_open = serializers.BooleanField(read_only=True)
     flagged_by = serializers.CharField(source='flagged_by.full_name', read_only=True)
     resolved_by = serializers.CharField(source='resolved_by.full_name', default=None, read_only=True)
 
@@ -417,10 +418,10 @@ class ApplicationDetailSerializer(serializers.ModelSerializer):
             fields[name] = serializer_class(many=True, read_only=True)
         return fields
 
-    def get_summary(self, obj):
+    def get_summary(self, obj) -> dict:
         return summarize(obj)
 
-    def get_completion(self, obj):
+    def get_completion(self, obj) -> dict:
         return completion(obj)
 
     def to_representation(self, obj):
@@ -541,7 +542,7 @@ class ReviewListSerializer(serializers.ModelSerializer):
         fields = ['id', 'applicant_name', 'registration_id', 'cnic', 'email', 'department', 'cycle', 'cycle_name',
                   'status', 'status_label', 'scholarship_percentage', 'submitted_at', 'reviewed_at', 'completion']
 
-    def get_completion(self, obj):
+    def get_completion(self, obj) -> dict:
         return completion(obj)
 
 
@@ -573,16 +574,16 @@ class StaffApplicationDetailSerializer(ApplicationDetailSerializer):
         request = self.context.get('request')
         return available_actions(request.user, obj) if request else []
 
-    def get_student(self, obj):
+    def get_student(self, obj) -> dict:
         s = obj.student
         return {'id': s.pk, 'full_name': s.full_name, 'email': s.email, 'registration_id': s.registration_id,
                 'department': s.department.name if s.department else None}
 
-    def get_documents(self, obj):
+    def get_documents(self, obj) -> list:
         from .checklist import build_checklist  # avoid a circular import
         return build_checklist(obj, DocumentSerializer)
 
-    def get_declarations(self, obj):
+    def get_declarations(self, obj) -> list:
         return DeclarationSerializer(obj.declarations.select_related('parent', 'application', 'physical_received_by'),
                                      many=True).data
 

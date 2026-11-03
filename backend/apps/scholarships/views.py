@@ -3,6 +3,8 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from django.utils import timezone
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -128,6 +130,8 @@ def stored_name(ext):
 class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,
                                 viewsets.GenericViewSet):
     """A student's own applications. Other students' applications are invisible (404)."""
+
+    queryset = Application.objects.none()  # for the API schema; get_queryset limits it to the student
 
     permission_classes = [has_role(Role.STUDENT)]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -354,6 +358,7 @@ class DocumentDownloadView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     def get(self, request, doc_id):
         doc = get_object_or_404(ApplicationDocument.objects.select_related('application'), pk=doc_id)
         if not can_open(request.user, doc.application):
@@ -370,6 +375,7 @@ class AwardLetterDownloadView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     def get(self, request, app_id):
         letter = get_object_or_404(AwardLetter.objects.select_related('application'), application_id=app_id)
         if not can_open(request.user, letter.application):
@@ -390,6 +396,7 @@ class DeclarationScanDownloadView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={(200, '*/*'): OpenApiTypes.BINARY})
     def get(self, request, declaration_id):
         declaration = get_object_or_404(Declaration.objects.select_related('application'), pk=declaration_id)
         if not can_open(request.user, declaration.application):
@@ -417,6 +424,7 @@ class DeclarationReceiveView(APIView):
             raise ValidationError({'detail': 'The case has left Placement verification, so Form 2 receipts are final.'})
         return declaration
 
+    @extend_schema(request=ReceiveSerializer, responses=DeclarationSerializer)
     def post(self, request, declaration_id):
         declaration = self._declaration(declaration_id)
         serializer = ReceiveSerializer(data=request.data)
@@ -428,6 +436,7 @@ class DeclarationReceiveView(APIView):
                application=declaration.application_id, received_on=str(declaration.physical_received_on))
         return Response(DeclarationSerializer(declaration).data)
 
+    @extend_schema(request=None, responses=DeclarationSerializer)
     def delete(self, request, declaration_id):
         declaration = self._declaration(declaration_id)
         declaration.physical_received_on = None
@@ -445,6 +454,7 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
     CNIC or email), ordering (submitted_at, -submitted_at, applicant_name)."""
 
     permission_classes = [has_role(*STAFF_ROLES)]
+    queryset = Application.objects.none()  # for the API schema; get_queryset applies access.visible_cases
     ORDERINGS = {'submitted_at', '-submitted_at', 'applicant_name', '-applicant_name'}
 
     def get_serializer_class(self):

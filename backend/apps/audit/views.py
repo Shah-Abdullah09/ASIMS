@@ -1,5 +1,7 @@
 from django.db.models import Q
 from django.utils.dateparse import parse_date
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
@@ -52,5 +54,6 @@ class AuditActionListView(APIView):
 
     permission_classes = [has_role(Role.ADMINISTRATOR)]
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     def get(self, request):
         return Response([{'value': value, 'label': label} for value, label in AuditAction.choices])

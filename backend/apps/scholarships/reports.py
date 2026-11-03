@@ -5,6 +5,8 @@ import io
 from django.db.models import Avg, Count, Q, Sum
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -65,6 +67,7 @@ class ScholarshipSummaryView(APIView):
 
     permission_classes = [has_role(*SUMMARY_ROLES)]
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)
     def get(self, request):
         return Response(summary(cycle_param(request)))
 
@@ -84,6 +87,7 @@ class ScholarshipExportView(APIView):
 
     permission_classes = [has_role(*EXPORT_ROLES)]
 
+    @extend_schema(responses={(200, 'text/csv'): OpenApiTypes.STR})
     def get(self, request):
         cycle_id = cycle_param(request)
         apps = (submitted(cycle_id).select_related('cycle', 'student__department', 'fee_adjustment')

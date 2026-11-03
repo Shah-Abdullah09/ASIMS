@@ -15,6 +15,7 @@ const env = {
   DJANGO_ALLOWED_HOSTS: 'localhost,127.0.0.1,testserver',
   EMAIL_BACKEND: 'django.core.mail.backends.locmem.EmailBackend',
   FRONTEND_URL: 'http://localhost:5174',
+  RATE_LOGIN: '1000/minute', // the test signs in as many people in a short time
 }
 
 rmSync(join(backend, 'e2e.sqlite3'), { force: true })

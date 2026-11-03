@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core import signing
 from django.core.mail import send_mail
 from django.db.models import Q
+from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import AuthenticationFailed
@@ -45,6 +46,8 @@ class RegisterView(GenericAPIView):
     permission_classes = [AllowAny]
     authentication_classes = []
     serializer_class = RegisterSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
 
     def post(self, request):
         serializer = self.get_serializer(data=request.data)
@@ -87,6 +90,8 @@ class LoginView(TokenObtainPairView):
     """Every attempt is audited: successes, and failures with the reason (never the password)."""
 
     serializer_class = LoginSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'login'
 
     def post(self, request, *args, **kwargs):
         email = str(request.data.get('email', ''))[:254].strip().lower()
@@ -105,9 +110,11 @@ class LoginView(TokenObtainPairView):
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses=UserSerializer)
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
+    @extend_schema(request=ProfileUpdateSerializer, responses=UserSerializer)
     def patch(self, request):
         serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

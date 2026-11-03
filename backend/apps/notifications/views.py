@@ -16,6 +16,7 @@ class NotificationViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     """The signed-in person's notifications, newest first (?unread=true for unread only)."""
 
     serializer_class = NotificationSerializer
+    queryset = Notification.objects.none()  # for the API schema; get_queryset limits it to the signed-in person
 
     def get_queryset(self):
         qs = Notification.objects.filter(recipient=self.request.user)

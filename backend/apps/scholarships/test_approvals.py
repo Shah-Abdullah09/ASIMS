@@ -111,9 +111,10 @@ def test_vc_approval_emails_the_student_with_the_percentage(case, approvers, dja
     run(django_capture_on_commit_callbacks,
         lambda: act(approvers['director'], app_id, 'approve', percentage=55),
         lambda: act(approvers['registrar'], app_id, 'approve'))
-    assert mail.outbox == []  # no email for steps in between
+    to_student = lambda: [m for m in mail.outbox if m.to == ['ali@gmail.com']]  # noqa: E731 (staff get queue emails)
+    assert to_student() == []  # the student is not emailed for steps in between
     run(django_capture_on_commit_callbacks, lambda: act(approvers['vc'], app_id, 'approve'))
-    (message,) = mail.outbox
+    (message,) = to_student()
     assert message.to == ['ali@gmail.com'] and 'approved' in message.subject
     assert '55% of the semester tuition fee' in message.body and 'Vice Chancellor' in message.body
 

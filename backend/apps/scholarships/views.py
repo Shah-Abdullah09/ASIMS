@@ -24,6 +24,7 @@ from .access import PLACEMENT, STAFF_ROLES, can_open, visible_cases
 from .checklist import build_checklist, max_files
 from .choices import ApplicationStatus, DocumentReview
 from .declarations import sync_declarations
+from .alerts import signed_letter_ready
 from .doccheck import run_document_check
 from .models import (Application, ApplicationDocument, AwardLetter, Declaration, DocumentCheck, FeeAdjustment,
                      ScholarshipCycle, SectionFlag)
@@ -583,6 +584,7 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
             raise ValidationError({'detail': 'There is no award letter yet; it is generated when the VC approves.'})
         serializer = SignedLetterSerializer(data=request.data, context={'letter': letter})
         serializer.is_valid(raise_exception=True)
+        newly_issued = letter.signed_issued_on is None
         letter.signed_issued_on = serializer.validated_data['signed_issued_on']
         letter.signed_marked_by = request.user
         old = None
@@ -601,6 +603,8 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
             letter.save()
             record(AuditAction.SIGNED_LETTER_ISSUED, request=request, target=letter, application=app.pk,
                    signed_issued_on=str(letter.signed_issued_on), scan=bool(upload))
+            if newly_issued or upload:
+                signed_letter_ready(app)
             if old:
                 transaction.on_commit(lambda: old[0].delete(old[1]))
         detail = self.get_queryset().get(pk=app.pk)

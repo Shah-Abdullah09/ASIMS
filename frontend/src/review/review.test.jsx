@@ -75,7 +75,7 @@ function mockApi(routes) {
   routes = [me, ...routes]
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, opts = {}) => {
     const method = opts.method || 'GET'
-    const body = opts.body ? JSON.parse(opts.body) : undefined
+    const body = opts.body instanceof FormData ? opts.body : opts.body ? JSON.parse(opts.body) : undefined
     calls.push({ method, url, body })
     const route = routes.find(([m, part]) => m === method && (typeof part === 'string' ? url.includes(part) : part.test(url)))
     if (!route) throw new Error(`Unexpected request ${method} ${url}`)
@@ -375,4 +375,65 @@ test('the DAC sees its own queue without Placement filters or forwarding', async
   expect(screen.queryByLabelText('Status')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Department')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: /Forward all/ })).not.toBeInTheDocument()
+})
+
+// ---------- Phase 4: Finance and the award letter ----------
+
+const LETTER = { reference: 'ASIMS/NBFG/Fall-26/0007', issued_on: '2026-10-29', percentage: 50, signed_issued_on: null,
+  signed_copy: false, download_url: '/api/v1/scholarships/award-letters/7/',
+  generated_url: '/api/v1/scholarships/award-letters/7/?version=generated', signed_scan_name: '' }
+const atFinance = { status: 'awaiting_fee_adjustment', scholarship_percentage: 50, award_letter: LETTER, flags: [],
+  available_actions: [{ action: 'record_fee_adjustment', label: 'Record fee adjustment', to_status: 'completed',
+    remarks_required: false, percentage: null }] }
+
+test('Finance previews the amounts and records the fee adjustment', async () => {
+  detailApi([['POST', '/fee-adjustment/', (body) => ({ body: DETAIL({ ...atFinance, status: 'completed', available_actions: [],
+    fee_adjustment: { semester_fee: body.semester_fee, percentage: 50, scholarship_amount: 72501, fee_payable: 72500,
+      voucher_number: body.voucher_number, adjusted_on: body.adjusted_on, remarks: '', recorded_by: 'Test User',
+      recorded_at: '2026-10-29T10:00:00Z' } }) })]], () => DETAIL(atFinance))
+  renderAt('/review/7', 'finance_officer')
+  const form = await screen.findByRole('form', { name: 'Fee adjustment' })
+  expect(screen.getByText('Record the fee adjustment above to complete the case.')).toBeInTheDocument()
+  expect(within(form).getByRole('button', { name: 'Record fee adjustment' })).toBeDisabled()
+  await userEvent.type(within(form).getByLabelText('Semester tuition fee (Rs)'), '145001')
+  const preview = within(form).getByRole('table', { name: 'Calculated amounts' })
+  expect(preview).toHaveTextContent('72,501')
+  expect(preview).toHaveTextContent('72,500')
+  await userEvent.type(within(form).getByLabelText('Fee voucher / challan number'), 'CH-2026-0042')
+  await userEvent.click(within(form).getByRole('button', { name: 'Record fee adjustment' }))
+  const fee = await screen.findByRole('region', { name: 'Fee adjustment' })
+  expect(within(fee).getByText('CH-2026-0042')).toBeInTheDocument()
+  const sent = calls.find((c) => c.method === 'POST').body
+  expect(sent).toMatchObject({ semester_fee: 145001, voucher_number: 'CH-2026-0042', remarks: '' })
+})
+
+test('Placement records the signed award letter with its scan', async () => {
+  detailApi([['POST', '/award-letter/signed/', () => ({ body: DETAIL({ ...atFinance, available_actions: [],
+    award_letter: { ...LETTER, signed_issued_on: '2026-10-30', signed_copy: true, signed_scan_name: 'signed.pdf' } }) })]],
+  () => DETAIL({ ...atFinance, available_actions: [] }))
+  renderAt('/review/7')
+  const letter = await screen.findByRole('region', { name: 'Award letter' })
+  expect(within(letter).getByText('ASIMS/NBFG/Fall-26/0007')).toBeInTheDocument()
+  const form = within(letter).getByRole('form', { name: 'Signed award letter' })
+  await userEvent.upload(within(form).getByLabelText(/Scan of the signed letter/),
+    new File(['%PDF'], 'signed.pdf', { type: 'application/pdf' }))
+  await userEvent.click(within(form).getByRole('button', { name: 'Record signed letter' }))
+  expect(await within(letter).findByRole('button', { name: 'Open signed scan' })).toBeInTheDocument()
+  const sent = calls.find((c) => c.method === 'POST').body
+  expect(sent.get('file').name).toBe('signed.pdf')
+  expect(sent.get('signed_issued_on')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+})
+
+test('only Placement can record the signed letter', async () => {
+  detailApi([], () => DETAIL({ ...atFinance }))
+  renderAt('/review/7', 'finance_officer')
+  const letter = await screen.findByRole('region', { name: 'Award letter' })
+  expect(within(letter).queryByRole('form', { name: 'Signed award letter' })).not.toBeInTheDocument()
+  expect(within(letter).getByRole('button', { name: 'Open generated letter' })).toBeInTheDocument()
+})
+
+test('Finance has its own queue on the dashboard', async () => {
+  renderApp('/dashboard', 'finance_officer')
+  await userEvent.click(await screen.findByRole('link', { name: 'My work: Fee adjustment queue' }))
+  expect(await screen.findByRole('heading', { name: 'Fee adjustment queue' })).toBeInTheDocument()
 })

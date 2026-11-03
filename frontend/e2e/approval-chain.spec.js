@@ -58,6 +58,12 @@ test('a scholarship case goes through the whole approval chain', async ({ page }
   await expect(page.getByRole('heading', { name: 'Ali Khan', level: 1 })).toBeVisible()
   await shot(page, 'placement-case')
 
+  const docCheck = page.getByRole('region', { name: 'Automatic document check' })
+  await docCheck.getByRole('button', { name: 'Run document check' }).click()
+  await expect(docCheck.getByText(/Last run/)).toBeVisible()
+  await docCheck.scrollIntoViewIfNeeded()
+  await shot(page, 'placement-document-check')
+
   const bank = page.getByRole('listitem', { name: BANK })
   await bank.getByRole('button', { name: 'Needs clarification' }).click()
   await bank.getByLabel(/What is unclear/).fill('Only the first page was uploaded; upload all six months.')

@@ -32,6 +32,7 @@ class AuditAction(models.TextChoices):
     AWARD_LETTER_GENERATED = 'award_letter_generated', 'Award letter generated'
     SIGNED_LETTER_ISSUED = 'signed_letter_issued', 'Signed award letter issued'
     FEE_ADJUSTMENT_RECORDED = 'fee_adjustment_recorded', 'Fee adjustment recorded'
+    DOCUMENT_CHECK_RUN = 'document_check_run', 'Automatic document check run'
     WORKFLOW_ACTION = 'workflow_action', 'Workflow action'
 
 

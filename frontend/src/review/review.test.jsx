@@ -437,3 +437,32 @@ test('Finance has its own queue on the dashboard', async () => {
   await userEvent.click(await screen.findByRole('link', { name: 'My work: Fee adjustment queue' }))
   expect(await screen.findByRole('heading', { name: 'Fee adjustment queue' })).toBeInTheDocument()
 })
+
+// ---------- Phase 5: automatic document check ----------
+
+test('Placement runs the automatic document check and sees what matched', async () => {
+  detailApi([['POST', '/document-check/', () => ({ body: DETAIL({ document_check: {
+    ran_at: '2026-11-03T10:00:00Z', ran_by: 'Test User', files: [{ slot: 'cnic_copies', status: 'unavailable' }],
+    summary: { matched: 1, not_found: 1, unreadable: 1, engine_missing: true, no_text: 0 },
+    items: [
+      { label: "Applicant's CNIC", expected: '36302-1234567-1', found: true },
+      { label: "Mother's CNIC", expected: '36302-2222222-2', found: false },
+      { label: "Father's salary (gross or net)", expected: 'Rs 72,000 or Rs 80,000', found: null },
+    ] } }) })]], () => DETAIL({ document_check: null }))
+  renderAt('/review/7')
+  const panel = await screen.findByRole('region', { name: 'Automatic document check' })
+  expect(within(panel).getByText('Not run yet.')).toBeInTheDocument()
+  await userEvent.click(within(panel).getByRole('button', { name: 'Run document check' }))
+  expect(await within(panel).findByText(/1 found, 1 not\s+found, 1 could not be read/)).toBeInTheDocument()
+  expect(within(panel).getByText("Mother's CNIC").closest('li')).toHaveClass('pending')
+  expect(within(panel).getByText("Applicant's CNIC").closest('li')).toHaveClass('done')
+  expect(within(panel).getByText(/Tesseract\) is not installed/)).toBeInTheDocument()
+  expect(within(panel).getByRole('button', { name: 'Run the check again' })).toBeInTheDocument()
+})
+
+test('approvers see the check but cannot run it', async () => {
+  detailApi([], () => DETAIL({ status: 'director_review', available_actions: [], document_check: null }))
+  renderAt('/review/7', 'director')
+  const panel = await screen.findByRole('region', { name: 'Automatic document check' })
+  expect(within(panel).queryByRole('button')).not.toBeInTheDocument()
+})

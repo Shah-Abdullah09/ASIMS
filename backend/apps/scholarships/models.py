@@ -492,6 +492,18 @@ class AwardLetter(models.Model):
         return f'ASIMS/NBFG/{app.cycle.name}/{app.pk:04d}'
 
 
+class DocumentCheck(models.Model):
+    """One run of the automatic document check (OCR): what was read and what matched the form. Advisory only."""
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='document_checks')
+    ran_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='document_checks')
+    ran_at = models.DateTimeField(auto_now_add=True)
+    files = models.JSONField(default=list, help_text='Each document read: slot, name, status')
+    items = models.JSONField(default=list, help_text='Each comparison: label, expected, found (true/false/null)')
+
+    class Meta:
+        ordering = ['-ran_at', '-pk']
+
+
 class StatusChange(models.Model):
     """Every move along the approval chain: who took which action, from which stage to which, and why."""
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='status_history')

@@ -22,7 +22,7 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'email', 'full_name', 'role', 'department', 'department_name',
-                  'registration_id', 'is_email_verified']
+                  'registration_id', 'is_email_verified', 'email_notifications']
         read_only_fields = fields
 
 
@@ -39,7 +39,7 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['full_name', 'registration_id']
+        fields = ['full_name', 'registration_id', 'email_notifications']
 
     def validate_registration_id(self, value):
         return value or None  # blank clears it (several accounts may have none)

@@ -64,6 +64,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         validators=[RegexValidator(r'^\d{6,8}$', 'Registration ID must be 6 to 8 digits.')],
     )
     is_email_verified = models.BooleanField(default=False)
+    email_notifications = models.BooleanField(default=True, help_text='Also send notifications by email')
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)  # Django admin site access
     date_joined = models.DateTimeField(auto_now_add=True)

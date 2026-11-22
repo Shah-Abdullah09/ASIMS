@@ -12,6 +12,7 @@ from rest_framework.exceptions import ValidationError
 from apps.accounts.models import Role
 from apps.audit.log import record
 from apps.audit.models import AuditAction
+from apps.workflow.chain import Chain
 from apps.workflow.engine import Transition, Workflow
 
 from .choices import ApplicationStatus as S
@@ -104,53 +105,41 @@ def available_actions(user, app):
     return [action_info(t) for t in CHAIN.available(user, app, app.status)]
 
 
-def clean_percentage(transition, percentage):
+def clean_percentage(transition, percentage=None):
     rule = PERCENTAGE.get(transition.action)
     if percentage in (None, ''):
         if rule == 'required':
             raise ValidationError({'percentage': 'Give the recommended scholarship percentage (1-100).'})
-        return None
+        return {'percentage': None}
     if rule is None:
         raise ValidationError({'percentage': f'"{transition.label}" does not take a percentage.'})
     if isinstance(percentage, bool) or not isinstance(percentage, int) or not 1 <= percentage <= 100:
         raise ValidationError({'percentage': 'Enter a whole number from 1 to 100.'})
-    return percentage
+    return {'percentage': percentage}
 
 
-def perform(app_id, action, user, *, remarks='', percentage=None, request=None):
-    """Take `action` on the application as `user` and record it. The row is locked first, so when two people
-    act at once the second gets a WorkflowError ('stage_conflict') instead of moving the case twice."""
-    with transaction.atomic():
-        app = (Application.objects.select_for_update(of=('self',)).select_related('student__department', 'cycle')
-               .get(pk=app_id))
-        transition = CHAIN.find(user, app, app.status, action)
-        remarks = (remarks or '').strip()
-        if transition.remarks_required and not remarks:
-            raise ValidationError({'remarks': 'Remarks are required for this action, so the reason is on record.'})
-        percentage = clean_percentage(transition, percentage)
-        if check := CHECKS.get((transition.action, transition.source)):
-            check(app)
+def update_application(app, transition, user, remarks, values):
+    """The application's own fields set by an action: submission time, last review and the percentage."""
+    now = timezone.now()
+    fields = []
+    if transition.action == 'submit':
+        app.submitted_at = now
+        fields.append('submitted_at')
+    if transition.action not in STUDENT_ACTIONS:
+        app.review_remarks, app.reviewed_by, app.reviewed_at = remarks, user, now
+        fields += ['review_remarks', 'reviewed_by', 'reviewed_at']
+    if values['percentage'] is not None:
+        app.scholarship_percentage = values['percentage']
+        fields.append('scholarship_percentage')
+    return fields
 
-        now = timezone.now()
-        change = StatusChange.objects.create(
-            application=app, from_status=transition.source, to_status=transition.target, action=transition.action,
-            remarks=remarks, percentage=percentage, changed_by=user, role=user.role)
-        fields = ['status', 'updated_at']
-        app.status = transition.target
-        if transition.action == 'submit':
-            app.submitted_at = now
-            fields.append('submitted_at')
-        if transition.action not in STUDENT_ACTIONS:
-            app.review_remarks, app.reviewed_by, app.reviewed_at = remarks, user, now
-            fields += ['review_remarks', 'reviewed_by', 'reviewed_at']
-        if percentage is not None:
-            app.scholarship_percentage = percentage
-            fields.append('scholarship_percentage')
-        app.save(update_fields=fields)
-        if after := AFTER.get((transition.action, transition.source)):
-            after(app, user)
-        transaction.on_commit(lambda: notify_student(app, change))
-        case_moved(app, change, user)
-        record(AuditAction.WORKFLOW_ACTION, request=request, actor=user, target=app, action=transition.action,
-               from_status=transition.source, to_status=transition.target, remarks=remarks, percentage=percentage)
-    return app
+
+def tell_people(app, change, user):
+    transaction.on_commit(lambda: notify_student(app, change))
+    case_moved(app, change, user)
+
+
+RUNNER = Chain(CHAIN, Application, StatusChange, 'application', related=('student__department', 'cycle'),
+               clean=clean_percentage, checks=CHECKS, update=update_application, after=AFTER,
+               on_moved=tell_people)
+perform = RUNNER.perform

@@ -4,7 +4,7 @@ import { api, apiUpload, openProtectedFile } from '../api.js'
 import { LockedBanner, StepNav } from './ApplicationWizard.jsx'
 import { useApplication } from './useApplication.js'
 import { FilePicker } from './DocumentsPage.jsx'
-import { checkFile, fileSize, MAX_MB, uploadError } from './files.js'
+import { checkFile, fileSize, MAX_MB, uploadError } from '../common/files.js'
 
 const date = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 

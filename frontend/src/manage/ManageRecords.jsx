@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api.js'
+import { day, when } from '../common/dates.js'
 import ManageNav from './ManageNav.jsx'
 
-const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
-const when = (d) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const messages = (err) => (err?.data && typeof err.data === 'object'
   ? Object.values(err.data).flat().join(' ') : err.message)
 

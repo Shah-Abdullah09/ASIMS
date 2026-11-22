@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { openProtectedFile } from '../api.js'
+import { when } from '../common/dates.js'
+import Timeline from '../common/Timeline.jsx'
 import { FeeAdjustmentFacts } from '../review/finance.jsx'
 import { ReturnedBanner } from './ApplicationWizard.jsx'
 import { historyTitle, STATUS_LABELS } from './options.js'
@@ -8,7 +10,6 @@ import { CHAIN, isReturned } from './returned.js'
 import { useApplication } from './useApplication.js'
 import './scholarship.css'
 
-const when = (d) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 /** The stages of the approval chain: done, current, or still to come (or where a rejection stopped it). */
 function StageProgress({ app }) {
@@ -126,14 +127,7 @@ export default function StatusPage() {
 
       <h2>Timeline</h2>
       {app.status_history.length === 0 ? <p>Nothing has happened yet. Your application is still a draft.</p> : (
-        <ol className="timeline">
-          {app.status_history.map((h) => (
-            <li key={`${h.changed_at}-${h.to_status}`}>
-              <p><strong>{historyTitle(h)}</strong> <span className="field-hint">{when(h.changed_at)} · now {STATUS_LABELS[h.to_status]}</span></p>
-              {h.remarks && <p>{h.remarks}</p>}
-            </li>
-          ))}
-        </ol>
+        <Timeline history={app.status_history} title={historyTitle} stages={STATUS_LABELS} />
       )}
 
       <div className="actions">

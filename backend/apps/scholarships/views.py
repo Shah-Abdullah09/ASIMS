@@ -1,7 +1,6 @@
 from django.core.mail import send_mail
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
@@ -20,6 +19,7 @@ from apps.accounts.permissions import has_role
 from apps.audit.log import record
 from apps.audit.models import AuditAction
 from apps.documents.validation import inspect_upload
+from apps.documents.views import private_file
 from apps.workflow.engine import WorkflowError
 
 from .access import PLACEMENT, STAFF_ROLES, can_open, visible_cases
@@ -354,7 +354,7 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
 
 
 class DocumentDownloadView(APIView):
-    """Streams a stored file after checking who is asking. Files are never exposed by a public URL."""
+    """Streams an application document after checking who is asking."""
 
     permission_classes = [IsAuthenticated]
 
@@ -363,10 +363,7 @@ class DocumentDownloadView(APIView):
         doc = get_object_or_404(ApplicationDocument.objects.select_related('application'), pk=doc_id)
         if not can_open(request.user, doc.application):
             raise NotFound()  # do not reveal that the file exists
-        response = FileResponse(doc.file.open('rb'), content_type=doc.content_type,
-                                filename=doc.original_name, as_attachment=False)
-        response['Cache-Control'] = 'private, no-store'
-        return response
+        return private_file(doc.file, doc.content_type, doc.original_name)
 
 
 class AwardLetterDownloadView(APIView):
@@ -386,9 +383,7 @@ class AwardLetterDownloadView(APIView):
             file, content_type = letter.signed_scan, letter.signed_scan_content_type
         else:
             name, file, content_type = f'award-letter-{letter.application_id}.pdf', letter.pdf, 'application/pdf'
-        response = FileResponse(file.open('rb'), content_type=content_type, filename=name, as_attachment=False)
-        response['Cache-Control'] = 'private, no-store'
-        return response
+        return private_file(file, content_type, name)
 
 
 class DeclarationScanDownloadView(APIView):
@@ -403,10 +398,7 @@ class DeclarationScanDownloadView(APIView):
             raise NotFound()
         if not declaration.scan:
             raise NotFound('No scan has been uploaded yet.')
-        response = FileResponse(declaration.scan.open('rb'), content_type=declaration.scan_content_type,
-                                filename=declaration.scan_original_name, as_attachment=False)
-        response['Cache-Control'] = 'private, no-store'
-        return response
+        return private_file(declaration.scan, declaration.scan_content_type, declaration.scan_original_name)
 
 
 class DeclarationReceiveView(APIView):

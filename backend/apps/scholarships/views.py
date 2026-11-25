@@ -20,7 +20,7 @@ from apps.audit.log import record
 from apps.audit.models import AuditAction
 from apps.documents.validation import inspect_upload
 from apps.documents.views import private_file
-from apps.workflow.engine import WorkflowError
+from apps.workflow.views import run_action
 
 from .access import PLACEMENT, STAFF_ROLES, can_open, visible_cases
 from .checklist import build_checklist, max_files
@@ -41,7 +41,7 @@ from .serializers import (SECTIONS, ActionSerializer, ApplicationCreateSerialize
                           scan_upload_allowed)
 from .submission import readiness
 from .verification import section_unlocked, slot_unlocked
-from .workflow import perform
+from .workflow import RUNNER
 
 DETAIL_PREFETCH = ['household_members', 'studying_members', 'parents', 'earning_members', 'asset_income',
                    'utility_months', 'vehicles', 'land_holdings', 'asset_worth', 'education_records',
@@ -60,19 +60,6 @@ class StageConflict(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = 'This case is no longer at Placement verification. Reload the page.'
     default_code = 'stage_conflict'
-
-WORKFLOW_ERROR_STATUS = {'unknown_action': status.HTTP_400_BAD_REQUEST, 'forbidden': status.HTTP_403_FORBIDDEN,
-                         'stage_conflict': status.HTTP_409_CONFLICT}
-
-
-def run_action(app_id, action, user, request, **data):
-    """Run a workflow action; returns an error Response, or None when it succeeded."""
-    try:
-        perform(app_id, action, user, request=request, **data)
-    except WorkflowError as exc:
-        return Response({'detail': exc.message, 'code': exc.code}, status=WORKFLOW_ERROR_STATUS[exc.code])
-    return None
-
 
 class OpenCycleListView(ListAPIView):
     """Scholarship cycles a student can apply to today."""
@@ -250,7 +237,7 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
                             status=status.HTTP_400_BAD_REQUEST)
         with transaction.atomic():
             sync_declarations(app)
-            if error := run_action(app.pk, 'submit', request.user, request, remarks='Submitted by the student.'):
+            if error := run_action(RUNNER, app.pk, 'submit', request.user, request, remarks='Submitted by the student.'):
                 transaction.set_rollback(True)
                 return error
         app = self._fresh(app)
@@ -271,7 +258,7 @@ class StudentApplicationViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, 
         remarks = str(request.data.get('remarks', '')).strip()[:2000] or 'Resubmitted by the student.'
         with transaction.atomic():
             sync_declarations(app)
-            if error := run_action(app.pk, 'resubmit', request.user, request, remarks=remarks):
+            if error := run_action(RUNNER, app.pk, 'resubmit', request.user, request, remarks=remarks):
                 transaction.set_rollback(True)
                 return error
         return Response(ApplicationDetailSerializer(self._fresh(app)).data)
@@ -486,7 +473,7 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
         serializer = ActionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        if error := run_action(app.pk, data['action'], request.user, request, remarks=data['remarks'],
+        if error := run_action(RUNNER, app.pk, data['action'], request.user, request, remarks=data['remarks'],
                                 percentage=data['percentage']):
             return error
         detail = self.get_queryset().filter(pk=app.pk).first()
@@ -595,7 +582,7 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
             waiting = waiting.filter(cycle=cycle)
         forwarded, skipped = [], []
         for app_id in waiting.order_by('submitted_at', 'pk').values_list('pk', flat=True):
-            error = run_action(app_id, 'forward', request.user, request, remarks='Forwarded with all shortlisted cases.')
+            error = run_action(RUNNER, app_id, 'forward', request.user, request, remarks='Forwarded with all shortlisted cases.')
             (skipped if error else forwarded).append(app_id)
         return Response({'forwarded': forwarded, 'skipped': skipped})
 
@@ -668,7 +655,7 @@ class StaffApplicationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, 
                    semester_fee=adj.semester_fee, percentage=adj.percentage,
                    scholarship_amount=adj.scholarship_amount, fee_payable=adj.fee_payable,
                    voucher_number=adj.voucher_number)
-            if error := run_action(app.pk, 'record_fee_adjustment', request.user, request,
+            if error := run_action(RUNNER, app.pk, 'record_fee_adjustment', request.user, request,
                                    remarks=data['remarks'] or f'Fee adjusted, voucher {adj.voucher_number}.'):
                 transaction.set_rollback(True)
                 return error

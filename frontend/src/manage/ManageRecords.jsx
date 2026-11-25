@@ -71,6 +71,74 @@ export function ManageDepartments() {
   )
 }
 
+/** Programs of each department: add, activate or deactivate (students choose an active one when they register). */
+export function ManagePrograms() {
+  const [rows, setRows] = useState(null)
+  const [departments, setDepartments] = useState([])
+  const [form, setForm] = useState({ department: '', name: '' })
+  const [error, setError] = useState('')
+  const load = useCallback(() => api('/admin/programs/').then(setRows), [])
+  useEffect(() => {
+    load().catch((e) => setError(e.message))
+    api('/admin/departments/').then((d) => setDepartments(d.results ?? d)).catch(() => {})
+  }, [load])
+
+  async function call(path, method, body) {
+    setError('')
+    try {
+      await api(path, { method, body })
+      await load()
+      return true
+    } catch (err) {
+      setError(messages(err))
+      return false
+    }
+  }
+
+  async function add(e) {
+    e.preventDefault()
+    if (await call('/admin/programs/', 'POST', { department: Number(form.department), name: form.name })) {
+      setForm({ ...form, name: '' })
+    }
+  }
+
+  return (
+    <Page title="Programs">
+      <form className="filters" aria-label="Add a program" onSubmit={add}>
+        <label>Department
+          <select value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} required>
+            <option value="">Select department</option>
+            {departments.filter((d) => d.is_active).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </label>
+        <label>Program name<input value={form.name} maxLength={120} onChange={(e) => setForm({ ...form, name: e.target.value })} required /></label>
+        <button type="submit">Add program</button>
+      </form>
+      {error && <p className="field-error" role="alert">{error}</p>}
+      {!rows ? <p>Loading...</p> : (
+        <div className="table-scroll">
+          <table className="list-table">
+            <thead><tr><th scope="col">Department</th><th scope="col">Program</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+            <tbody>
+              {rows.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.department_name}</td><td>{p.name}</td><td>{p.is_active ? 'Active' : 'Inactive'}</td>
+                  <td>
+                    <button type="button" className="secondary"
+                      onClick={() => call(`/admin/programs/${p.id}/`, 'PATCH', { is_active: !p.is_active })}>
+                      {p.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Page>
+  )
+}
+
 /** Scholarship cycles: open a new one, change dates, close; a cycle without applications can be deleted. */
 export function ManageCycles() {
   const [rows, setRows] = useState(null)

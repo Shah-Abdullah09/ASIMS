@@ -8,11 +8,13 @@ const fieldErrors = (err) => (err?.data && typeof err.data === 'object'
   ? Object.fromEntries(Object.entries(err.data).map(([k, v]) => [k, [].concat(v).join(' ')]))
   : { detail: err.message })
 
-/** One user: role, department and active can be changed; staff can be sent a new set-password invitation. */
-function UserRow({ user, departments, onSaved }) {
+/** One user: role, department, a student's program and active can be changed; staff can be sent a new
+ * set-password invitation. */
+function UserRow({ user, departments, programs, onSaved }) {
   const [editing, setEditing] = useState(false)
   const [role, setRole] = useState(user.role)
   const [department, setDepartment] = useState(user.department ?? '')
+  const [program, setProgram] = useState(user.program ?? '')
   const [active, setActive] = useState(user.is_active)
   const [errors, setErrors] = useState({})
   const [note, setNote] = useState('')
@@ -21,7 +23,8 @@ function UserRow({ user, departments, onSaved }) {
     setErrors({})
     try {
       onSaved(await api(`/admin/users/${user.id}/`, { method: 'PATCH',
-        body: { role, department: department === '' ? null : Number(department), is_active: active } }))
+        body: { role, department: department === '' ? null : Number(department),
+          program: role === 'student' && program !== '' ? Number(program) : null, is_active: active } }))
       setEditing(false)
       setNote('Saved.')
     } catch (err) {
@@ -39,6 +42,8 @@ function UserRow({ user, departments, onSaved }) {
   }
 
   const deptName = departments.find((d) => d.id === user.department)?.name
+  const programName = programs.find((p) => p.id === user.program)?.name
+  const deptPrograms = programs.filter((p) => p.department === Number(department))
   return (
     <tr>
       <td>{user.full_name}<br /><span className="field-hint">{user.email}</span></td>
@@ -51,11 +56,19 @@ function UserRow({ user, departments, onSaved }) {
             {errors.role && <p className="field-error">{errors.role}</p>}
           </td>
           <td>
-            <select aria-label={`Department of ${user.email}`} value={department} onChange={(e) => setDepartment(e.target.value)}>
+            <select aria-label={`Department of ${user.email}`} value={department}
+              onChange={(e) => { setDepartment(e.target.value); setProgram('') }}>
               <option value="">None</option>
               {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             {errors.department && <p className="field-error">{errors.department}</p>}
+            {role === 'student' && (
+              <select aria-label={`Program of ${user.email}`} value={program} onChange={(e) => setProgram(e.target.value)}>
+                <option value="">No program</option>
+                {deptPrograms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
+            {errors.program && <p className="field-error">{errors.program}</p>}
           </td>
           <td>
             <label className="checkbox"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active</label>
@@ -69,7 +82,7 @@ function UserRow({ user, departments, onSaved }) {
       ) : (
         <>
           <td>{ROLE_LABELS[user.role]}</td>
-          <td>{deptName || '—'}</td>
+          <td>{deptName || '—'}{programName && <><br /><span className="field-hint">{programName}</span></>}</td>
           <td>{user.is_active ? 'Active' : 'Deactivated'}</td>
           <td>
             <button type="button" className="secondary" onClick={() => { setEditing(true); setNote('') }}>Edit</button>{' '}
@@ -88,6 +101,7 @@ function UserRow({ user, departments, onSaved }) {
 export default function ManageUsers() {
   const [users, setUsers] = useState(null)
   const [departments, setDepartments] = useState([])
+  const [programs, setPrograms] = useState([])
   const [search, setSearch] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [form, setForm] = useState({ email: '', full_name: '', role: 'placement_officer', department: '', password: '' })
@@ -100,7 +114,10 @@ export default function ManageUsers() {
     if (roleFilter) params.set('role', roleFilter)
     return api(`/admin/users/?${params}`).then(setUsers)
   }, [search, roleFilter])
-  useEffect(() => { api('/admin/departments/').then((d) => setDepartments(d.results ?? d)).catch(() => {}) }, [])
+  useEffect(() => {
+    api('/admin/departments/').then((d) => setDepartments(d.results ?? d)).catch(() => {})
+    api('/admin/programs/').then(setPrograms).catch(() => {})
+  }, [])
   useEffect(() => { load().catch(() => setUsers({ results: [], count: 0 })) }, [load])
 
   async function create(e) {
@@ -168,7 +185,7 @@ export default function ManageUsers() {
           <div className="table-scroll">
             <table className="list-table">
               <thead><tr><th scope="col">Name</th><th scope="col">Role</th><th scope="col">Department</th><th scope="col">Access</th><th scope="col">Actions</th></tr></thead>
-              <tbody>{users.results.map((u) => <UserRow key={u.id} user={u} departments={departments} onSaved={replace} />)}</tbody>
+              <tbody>{users.results.map((u) => <UserRow key={u.id} user={u} departments={departments} programs={programs} onSaved={replace} />)}</tbody>
             </table>
           </div>
         </>

@@ -7,6 +7,7 @@ from . import views
 router = DefaultRouter()
 router.register('admin/users', views.UserAdminViewSet, basename='admin-users')
 router.register('admin/departments', views.DepartmentAdminViewSet, basename='admin-departments')
+router.register('admin/programs', views.ProgramAdminViewSet, basename='admin-programs')
 
 urlpatterns = [
     path('auth/register/', views.RegisterView.as_view(), name='register'),
@@ -18,5 +19,6 @@ urlpatterns = [
     path('auth/password/forgot/', views.PasswordForgotView.as_view(), name='password-forgot'),
     path('auth/password/reset/', views.PasswordResetView.as_view(), name='password-reset'),
     path('departments/', views.PublicDepartmentListView.as_view(), name='departments'),
+    path('programs/', views.PublicProgramListView.as_view(), name='programs'),
     path('', include(router.urls)),
 ]

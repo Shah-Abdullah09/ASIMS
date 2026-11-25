@@ -17,12 +17,13 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from apps.audit.log import record
 from apps.audit.models import AuditAction
 
-from .models import Department, Role, User
+from .models import Department, Program, Role, User
 from .passwords import INVITE, RESET, read_password_token, send_password_link
 from .permissions import has_role
 from .serializers import (AdminUserSerializer, DepartmentSerializer, LoginSerializer, PasswordChangeSerializer,
                           PasswordForgotSerializer, PasswordResetSerializer, ProfileUpdateSerializer,
-                          RegisterSerializer, UserSerializer, VerifyEmailSerializer, check_new_password)
+                          ProgramSerializer, RegisterSerializer, UserSerializer, VerifyEmailSerializer,
+                          check_new_password)
 
 VERIFY_SALT = 'asims-email-verification'
 
@@ -152,6 +153,39 @@ class DepartmentAdminViewSet(viewsets.ModelViewSet):
         record(AuditAction.DEPARTMENT_CHANGED, request=self.request, target=instance, change='deleted',
                code=instance.code, name=instance.name)
         instance.delete()
+
+
+class PublicProgramListView(ListAPIView):
+    """Active programs of active departments (?department= for one), used by the registration form."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    serializer_class = ProgramSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = Program.objects.filter(is_active=True, department__is_active=True).select_related('department')
+        if department := self.request.query_params.get('department'):
+            qs = qs.filter(department_id=department) if department.isdigit() else qs.none()
+        return qs
+
+
+class ProgramAdminViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.UpdateModelMixin,
+                          viewsets.GenericViewSet):
+    """No delete: a program in use stays on its students' accounts; it is deactivated instead."""
+
+    permission_classes = [has_role(Role.ADMINISTRATOR)]
+    serializer_class = ProgramSerializer
+    queryset = Program.objects.select_related('department')
+    pagination_class = None
+
+    def perform_create(self, serializer):
+        program = serializer.save()
+        record(AuditAction.PROGRAM_CHANGED, request=self.request, target=program, change='created', **serializer.data)
+
+    def perform_update(self, serializer):
+        program = serializer.save()
+        record(AuditAction.PROGRAM_CHANGED, request=self.request, target=program, change='updated', **serializer.data)
 
 
 class UserAdminViewSet(mixins.CreateModelMixin, mixins.ListModelMixin, mixins.RetrieveModelMixin,

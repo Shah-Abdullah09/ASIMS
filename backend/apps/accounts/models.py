@@ -16,8 +16,9 @@ class Role(models.TextChoices):
     ADMINISTRATOR = 'administrator', 'Administrator'
 
 
-# Roles whose work is scoped to one department (DAC sees only its department's applicants)
-DEPARTMENT_ROLES = (Role.DAC_MEMBER, Role.DIC)
+# Roles whose work is scoped to one department (DAC sees only its department's applicants; a DIC assigns
+# supervisors from its own department)
+DEPARTMENT_ROLES = (Role.DAC_MEMBER, Role.DIC, Role.FACULTY_SUPERVISOR)
 
 
 class Department(models.Model):
@@ -30,6 +31,20 @@ class Department(models.Model):
 
     def __str__(self):
         return f'{self.code} - {self.name}'
+
+
+class Program(models.Model):
+    """A degree program of a department, e.g. BS Computer Science. Students choose theirs when they register."""
+    department = models.ForeignKey(Department, on_delete=models.PROTECT, related_name='programs')
+    name = models.CharField(max_length=120)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['department__name', 'name']
+        constraints = [models.UniqueConstraint(fields=['department', 'name'], name='unique_program_per_department')]
+
+    def __str__(self):
+        return self.name
 
 
 class UserManager(BaseUserManager):
@@ -58,6 +73,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     department = models.ForeignKey(
         Department, null=True, blank=True, on_delete=models.PROTECT, related_name='users'
     )
+    program = models.ForeignKey(Program, null=True, blank=True, on_delete=models.PROTECT, related_name='students')
     # University registration number (students): 6 to 8 digits, e.g. 233585
     registration_id = models.CharField(
         max_length=8, unique=True, null=True, blank=True,

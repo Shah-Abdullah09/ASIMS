@@ -85,6 +85,25 @@ test('registration success asks the student to check their email', async () => {
   expect(await screen.findByText(/Check your email to verify/)).toBeInTheDocument()
 })
 
+test('registration offers the programs of the chosen department', async () => {
+  let sent
+  mockFetch((url, opts) => {
+    if (url.includes('/programs/?department=1')) return { body: [{ id: 7, name: 'BS Computer Science' }] }
+    if (url.includes('/departments/')) return { body: [{ id: 1, name: 'Computer Science', code: 'CS' }] }
+    sent = JSON.parse(opts.body)
+    return { status: 201, body: { detail: 'Account created. Check your email to verify your address.' } }
+  })
+  renderAt('/register')
+  await userEvent.type(screen.getByLabelText('Full name'), 'Ali')
+  await userEvent.type(screen.getByLabelText('Email'), 'ali@students.au.edu.pk')
+  await userEvent.selectOptions(await screen.findByLabelText('Department'), '1')
+  await userEvent.selectOptions(await screen.findByLabelText('Program'), '7')
+  await userEvent.type(screen.getByLabelText('Password'), 'Str0ng-Passw0rd!')
+  await userEvent.click(screen.getByRole('button', { name: 'Register' }))
+  expect(await screen.findByText(/Check your email to verify/)).toBeInTheDocument()
+  expect(sent).toMatchObject({ department: 1, program: 7 })
+})
+
 test('verify-email page reports the result', async () => {
   mockFetch(() => ({ body: { detail: 'Email verified. You can now log in.' } }))
   renderAt('/verify-email?token=abc')

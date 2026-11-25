@@ -7,7 +7,7 @@ from rest_framework.validators import UniqueValidator
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import DEPARTMENT_ROLES, Department, Role, User
+from .models import DEPARTMENT_ROLES, Department, Program, Role, User
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
@@ -16,12 +16,27 @@ class DepartmentSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'code', 'is_active']
 
 
+class ProgramSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+
+    class Meta:
+        model = Program
+        fields = ['id', 'department', 'department_name', 'name', 'is_active']
+
+
+def check_program(program, department):
+    """A student's program must belong to their department."""
+    if program is not None and program.department_id != getattr(department, 'pk', None):
+        raise serializers.ValidationError({'program': 'Choose a program of the selected department.'})
+
+
 class UserSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True, default=None)
+    program_name = serializers.CharField(source='program.name', read_only=True, default=None)
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'role', 'department', 'department_name',
+        fields = ['id', 'email', 'full_name', 'role', 'department', 'department_name', 'program', 'program_name',
                   'registration_id', 'is_email_verified', 'email_notifications']
         read_only_fields = fields
 
@@ -52,6 +67,8 @@ class RegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=150)
     password = serializers.CharField(write_only=True)
     department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.filter(is_active=True))
+    program = serializers.PrimaryKeyRelatedField(queryset=Program.objects.filter(is_active=True), required=False,
+                                                 allow_null=True)
 
     def validate_email(self, value):
         value = value.lower()
@@ -63,6 +80,7 @@ class RegisterSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs):
+        check_program(attrs.get('program'), attrs['department'])
         candidate = User(email=attrs['email'], full_name=attrs['full_name'])
         validate_password(attrs['password'], candidate)
         return attrs
@@ -98,7 +116,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'email', 'full_name', 'role', 'department', 'registration_id', 'is_active',
+        fields = ['id', 'email', 'full_name', 'role', 'department', 'program', 'registration_id', 'is_active',
                   'is_email_verified', 'password', 'date_joined']
         read_only_fields = ['id', 'is_email_verified', 'date_joined']
 
@@ -116,6 +134,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         department = attrs.get('department', getattr(self.instance, 'department', None))
         if role in DEPARTMENT_ROLES and department is None:
             raise serializers.ValidationError({'department': 'This role must be linked to a department.'})
+        check_program(attrs.get('program', getattr(self.instance, 'program', None)), department)
         if attrs.get('password'):
             validate_password(attrs['password'], self.instance)
         return attrs

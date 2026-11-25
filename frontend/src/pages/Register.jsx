@@ -4,7 +4,8 @@ import { api } from '../api.js'
 
 export default function Register() {
   const [departments, setDepartments] = useState([])
-  const [form, setForm] = useState({ full_name: '', email: '', password: '', department: '' })
+  const [programs, setPrograms] = useState([])
+  const [form, setForm] = useState({ full_name: '', email: '', password: '', department: '', program: '' })
   const [error, setError] = useState('')
   const [done, setDone] = useState('')
 
@@ -14,6 +15,15 @@ export default function Register() {
 
   const set = (field) => (e) => setForm({ ...form, [field]: e.target.value })
 
+  function chooseDepartment(e) {
+    const department = e.target.value
+    setForm({ ...form, department, program: '' })
+    setPrograms([])
+    if (department) {
+      api(`/programs/?department=${department}`, { auth: false }).then(setPrograms).catch(() => setPrograms([]))
+    }
+  }
+
   async function onSubmit(e) {
     e.preventDefault()
     setError('')
@@ -21,7 +31,7 @@ export default function Register() {
       const res = await api('/auth/register/', {
         method: 'POST',
         auth: false,
-        body: { ...form, department: Number(form.department) },
+        body: { ...form, department: Number(form.department), program: form.program ? Number(form.program) : null },
       })
       setDone(res.detail)
     } catch (err) {
@@ -53,7 +63,7 @@ export default function Register() {
         </label>
         <label>
           Department
-          <select value={form.department} onChange={set('department')} required>
+          <select value={form.department} onChange={chooseDepartment} required>
             <option value="">Select department</option>
             {departments.map((d) => (
               <option key={d.id} value={d.id}>
@@ -62,6 +72,15 @@ export default function Register() {
             ))}
           </select>
         </label>
+        {programs.length > 0 && (
+          <label>
+            Program
+            <select value={form.program} onChange={set('program')}>
+              <option value="">Select program</option>
+              {programs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+        )}
         <label>
           Password
           <input type="password" value={form.password} onChange={set('password')} required />

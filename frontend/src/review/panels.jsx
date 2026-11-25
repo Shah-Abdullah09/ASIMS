@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { api } from '../api.js'
+import { todayIso, when } from '../common/dates.js'
 import { FLAG_SECTIONS } from './roles.js'
 
-const when = (d) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-const todayIso = () => new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local time
 const firstError = (err, key) => {
   const v = err.data?.[key]
   return v ? [].concat(v).join(' ') : ''

@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, openProtectedFile } from '../api.js'
 import { useAuth } from '../AuthContext.jsx'
-import { rupees } from '../scholarship/convert.js'
-import { fileSize } from '../scholarship/files.js'
+import { rupees } from '../common/convert.js'
+import { day, todayIso, when } from '../common/dates.js'
+import DecisionForm from '../common/DecisionForm.jsx'
+import { fileSize } from '../common/files.js'
+import Timeline from '../common/Timeline.jsx'
 import * as O from '../scholarship/options.js'
 import '../scholarship/scholarship.css'
 import { completionText } from './format.js'
@@ -12,13 +15,10 @@ import { DocumentCheckPanel, FileReview, FlagsPanel, InterviewForm, ReviewChip }
 import { PLACEMENT, QUEUES } from './roles.js'
 
 const ROLE_TITLES = { father: 'Father', mother: 'Mother', guardian: 'Guardian' }
-const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
-const when = (d) => new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 const month = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '—')
 const pick = (options, value) => options.find((o) => o.value === value)?.label || value || '—'
 const yesNo = (v) => (v === true ? 'Yes' : v === false ? 'No' : '—')
 const money = (v) => (v === null || v === undefined ? '—' : rupees(v))
-const todayIso = () => new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local time
 
 function Facts({ items }) {
   return (
@@ -58,103 +58,41 @@ function Section({ id, title, children }) {
 }
 
 /** The actions the server says this user may take at the current stage, with remarks and percentage. */
-function ActionPanel({ app, onSaved, emptyText = 'You have no action at this stage.' }) {
+function ActionPanel({ app, onSaved, emptyText }) {
   // Finance completes a case through its own form (FinancePanel), not here
   const actions = app.available_actions.filter((a) => a.action !== 'record_fee_adjustment')
-  const [chosen, setChosen] = useState(actions[0]?.action || '')
-  const [remarks, setRemarks] = useState('')
   const [percentage, setPercentage] = useState(app.scholarship_percentage ?? '')
-  const [errors, setErrors] = useState({})
-  const [saving, setSaving] = useState(false)
-  const [done, setDone] = useState('')
-  const current = actions.find((a) => a.action === chosen)
-
-  async function save(e) {
-    e.preventDefault()
-    if (!current) return
-    setSaving(true)
-    setErrors({})
-    setDone('')
-    const body = { action: current.action, remarks }
-    if (current.percentage && percentage !== '') body.percentage = Number(percentage)
-    try {
-      const updated = await api(`/scholarships/review/applications/${app.id}/actions/`, { method: 'POST', body })
-      setRemarks('')
-      setChosen(updated.available_actions[0]?.action || '')
-      setDone(`Done: the case is now at "${O.STATUS_LABELS[updated.status]}".`)
-      onSaved(updated)
-    } catch (err) {
-      setErrors(err.data && typeof err.data === 'object' ? err.data : { detail: err.message })
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const err = (k) => errors[k] && [].concat(errors[k]).join(' ')
-  return (
-    <form className="decision-panel" onSubmit={save} noValidate aria-label="Decision">
+  const header = (
+    <>
       <h2>Decision</h2>
       <p>Current stage: <span className={`chip chip-${app.status}`}>{O.STATUS_LABELS[app.status]}</span></p>
       {app.scholarship_percentage != null && <p className="field-hint">Scholarship: {app.scholarship_percentage}% of the semester tuition fee</p>}
       {app.reviewed_at && <p className="field-hint">Last action {when(app.reviewed_at)} by {app.reviewed_by}</p>}
-      {done && <p className="notice-ok" role="status">{done}</p>}
-      {actions.length === 0 ? (
-        <p className="field-hint">{emptyText}</p>
-      ) : (
-        <>
-          <div className="field">
-            <label htmlFor="decision-action">Action</label>
-            <select id="decision-action" value={chosen} onChange={(e) => setChosen(e.target.value)}>
-              {actions.map((a) => <option key={a.action} value={a.action}>{a.label}</option>)}
-            </select>
-          </div>
-          {current?.percentage && (
-            <div className="field">
-              <label htmlFor="decision-percentage">
-                Scholarship percentage{current.percentage === 'required' && <span className="req"> * required</span>}
-              </label>
-              <input id="decision-percentage" type="number" min={1} max={100} step={1} value={percentage}
-                onChange={(e) => setPercentage(e.target.value)} aria-invalid={err('percentage') ? true : undefined}
-                aria-describedby="decision-percentage-msg" />
-              {err('percentage') && <p className="field-error" id="decision-percentage-msg">{err('percentage')}</p>}
-            </div>
-          )}
-          <div className="field">
-            <label htmlFor="decision-remarks">Remarks{current?.remarks_required && <span className="req"> * required</span>}</label>
-            <textarea id="decision-remarks" rows={3} maxLength={2000} value={remarks} onChange={(e) => setRemarks(e.target.value)}
-              aria-invalid={err('remarks') ? true : undefined} aria-describedby="decision-remarks-msg"
-              placeholder="Shown to the student" />
-            {err('remarks') && <p className="field-error" id="decision-remarks-msg">{err('remarks')}</p>}
-          </div>
-          {current?.action === 'verify' && !app.completion.complete && (
-            <p className="notice">Verifying needs a complete application: {completionText(app.completion).toLowerCase()}.</p>
-          )}
-          {errors.detail && <p className="field-error" role="alert">{err('detail')}</p>}
-          {errors.action && (
-            <div className="field-error" role="alert">
-              {[].concat(errors.action).length > 1 ? (
-                <>
-                  <p>{[].concat(errors.action)[0]}</p>
-                  <ul>{[].concat(errors.action).slice(1).map((m) => <li key={m}>{m}</li>)}</ul>
-                </>
-              ) : <p>{err('action')}</p>}
-            </div>
-          )}
-          <button type="submit" disabled={saving}>{saving ? 'Saving...' : current?.label}</button>
-        </>
-      )}
-
+    </>
+  )
+  const percentageField = (current, error) => current.percentage && (
+    <div className="field">
+      <label htmlFor="decision-percentage">
+        Scholarship percentage{current.percentage === 'required' && <span className="req"> * required</span>}
+      </label>
+      <input id="decision-percentage" type="number" min={1} max={100} step={1} value={percentage}
+        onChange={(e) => setPercentage(e.target.value)} aria-invalid={error('percentage') ? true : undefined}
+        aria-describedby="decision-percentage-msg" />
+      {error('percentage') && <p className="field-error" id="decision-percentage-msg">{error('percentage')}</p>}
+    </div>
+  )
+  return (
+    <DecisionForm actions={actions} stages={O.STATUS_LABELS} header={header} emptyText={emptyText} onSaved={onSaved}
+      submit={(body) => api(`/scholarships/review/applications/${app.id}/actions/`, { method: 'POST', body })}
+      fields={percentageField}
+      extend={(current) => (current.percentage && percentage !== '' ? { percentage: Number(percentage) } : {})}
+      notice={(current) => current.action === 'verify' && !app.completion.complete && (
+        <p className="notice">Verifying needs a complete application: {completionText(app.completion).toLowerCase()}.</p>
+      )}>
       <h3>History</h3>
-      <ol className="timeline">
-        {app.status_history.map((h) => (
-          <li key={`${h.changed_at}-${h.to_status}`}>
-            <p><strong>{O.historyTitle(h)}</strong> <span className="field-hint">{h.changed_by}, {when(h.changed_at)} · now {O.STATUS_LABELS[h.to_status]}</span></p>
-            {h.percentage != null && <p className="field-hint">Percentage: {h.percentage}%</p>}
-            {h.remarks && <p>{h.remarks}</p>}
-          </li>
-        ))}
-      </ol>
-    </form>
+      <Timeline history={app.status_history} title={O.historyTitle} stages={O.STATUS_LABELS} showWho
+        detail={(h) => h.percentage != null && <p className="field-hint">Percentage: {h.percentage}%</p>} />
+    </DecisionForm>
   )
 }
 

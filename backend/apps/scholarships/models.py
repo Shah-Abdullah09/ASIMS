@@ -11,6 +11,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.documents.paths import award_letter_path, declaration_scan_path, scholarship_document_path
+from apps.workflow.models import StatusChangeBase
 
 from .choices import (PROFESSION_TEMPLATE, AccommodationStatus, AccommodationType, ApplicationStatus,
                       DeclarationTemplate, DocumentReview, FlagSection,
@@ -504,22 +505,15 @@ class DocumentCheck(models.Model):
         ordering = ['-ran_at', '-pk']
 
 
-class StatusChange(models.Model):
-    """Every move along the approval chain: who took which action, from which stage to which, and why."""
+class StatusChange(StatusChangeBase):
+    """Every move along the scholarship approval chain."""
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='status_history')
     from_status = models.CharField(max_length=30, choices=ApplicationStatus.choices)
     to_status = models.CharField(max_length=30, choices=ApplicationStatus.choices)
-    action = models.CharField(max_length=30, blank=True, help_text='Workflow action, e.g. verify or approve')
-    remarks = models.TextField(blank=True)
     percentage = models.PositiveSmallIntegerField(null=True, blank=True,
                                                   help_text='Scholarship % recommended or approved by this action')
     changed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                    related_name='scholarship_status_changes')
-    role = models.CharField(max_length=30, blank=True, help_text='Role of the person at the time of the action')
-    changed_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['changed_at', 'pk']
 
     def __str__(self):
         return f'#{self.application_id}: {self.from_status} -> {self.to_status}'

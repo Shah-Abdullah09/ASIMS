@@ -13,6 +13,7 @@ class AuditAction(models.TextChoices):
     USER_CREATED = 'user_created', 'Account created'
     USER_UPDATED = 'user_updated', 'Account changed'
     DEPARTMENT_CHANGED = 'department_changed', 'Department added or changed'
+    PROGRAM_CHANGED = 'program_changed', 'Program added or changed'
     APPLICATION_CREATED = 'application_created', 'Application started'
     APPLICATION_SAVED = 'application_saved', 'Application section saved'
     DOCUMENT_UPLOADED = 'document_uploaded', 'Document uploaded'

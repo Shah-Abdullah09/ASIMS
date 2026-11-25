@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, downloadProtectedFile } from '../api.js'
 import { useAuth } from '../AuthContext.jsx'
-import { rupees } from '../scholarship/convert.js'
+import { rupees } from '../common/convert.js'
 import '../scholarship/scholarship.css'
 
 const CAN_EXPORT = ['placement_officer', 'administrator']

@@ -185,7 +185,7 @@ def test_admin_creates_department_and_staff_account(api, db):
     assert login(api, 'dac.se@au.edu.pk').status_code == 200  # staff can log in straight away
 
 
-@pytest.mark.parametrize('role', ['dac_member', 'dic'])
+@pytest.mark.parametrize('role', ['dac_member', 'dic', 'faculty_supervisor'])
 def test_department_roles_require_a_department(api, db, role):
     auth_as(api, make_user(Role.ADMINISTRATOR))
     response = api.post('/api/v1/admin/users/', {

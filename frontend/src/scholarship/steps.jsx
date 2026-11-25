@@ -4,8 +4,8 @@
 import {
   blank, fromBoolInput, fromMonthInput, packRows, remapRowErrors, rupees, tableErrors, toBoolInput, toDate,
   toInput, toMonthInput, toNumber,
-} from './convert.js'
-import { Display, Input, RowsTable, Select, TextArea, YesNo } from './fields.jsx'
+} from '../common/convert.js'
+import { Display, Input, RowsTable, Select, TextArea, YesNo } from '../common/fields.jsx'
 import * as O from './options.js'
 
 const pick = (obj, keys) => Object.fromEntries(keys.map((k) => [k, toInput(obj?.[k])]))

@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { api, apiUpload, openProtectedFile } from '../api.js'
-import { rupees } from '../scholarship/convert.js'
-import { ACCEPT } from '../scholarship/files.js'
+import { rupees } from '../common/convert.js'
+import { day, todayIso } from '../common/dates.js'
+import { ACCEPT } from '../common/files.js'
 import { scholarshipAmount } from './format.js'
 
-const day = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
-const todayIso = () => new Date().toLocaleDateString('en-CA')
 const fieldError = (err, key) => (err?.data?.[key] ? [].concat(err.data[key]).join(' ') : '')
 
 /** The award letter for staff: download the letter (signed scan if uploaded) or the generated PDF; Placement

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, apiUpload, openProtectedFile } from '../api.js'
+import { ACCEPT, checkFile, fileSize, MAX_MB, uploadError } from '../common/files.js'
 import { LockedBanner, StepNav } from './ApplicationWizard.jsx'
-import { ACCEPT, checkFile, fileSize, MAX_MB, uploadError } from './files.js'
 import { isReturned, slotOpen } from './returned.js'
 import { useApplication } from './useApplication.js'
 

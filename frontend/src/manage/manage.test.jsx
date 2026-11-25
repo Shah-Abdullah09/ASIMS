@@ -9,6 +9,11 @@ const page = (results) => ({ count: results.length, next: null, previous: null, 
 const USERS = [
   { id: 2, email: 'sana@au.edu.pk', full_name: 'Sana Placement', role: 'placement_officer', department: null, is_active: true },
   { id: 3, email: 'dac@au.edu.pk', full_name: 'Dr Kamran', role: 'dac_member', department: 5, is_active: true },
+  { id: 4, email: 'ali@students.au.edu.pk', full_name: 'Ali Khan', role: 'student', department: 5, program: 7, is_active: true },
+]
+const PROGRAMS = [
+  { id: 7, department: 5, department_name: 'Computer Science', name: 'BS Computer Science', is_active: true },
+  { id: 8, department: 5, department_name: 'Computer Science', name: 'BS Artificial Intelligence', is_active: true },
 ]
 const SUMMARY = {
   cycle: null, submitted: 4, in_progress: 1, approved: 2, rejected: 1, completed: 1, average_percentage: 50,
@@ -30,6 +35,7 @@ function mockApi(extra = []) {
     if (hit) data = hit[2](body, url)
     else if (url.includes('/auth/me/')) data = { id: 1, full_name: 'Admin', role, email: 'admin@au.edu.pk' }
     else if (url.includes('/admin/users/')) data = page(USERS)
+    else if (url.includes('/admin/programs/')) data = PROGRAMS
     else if (url.includes('/admin/departments/')) data = page([{ id: 5, name: 'Computer Science', code: 'CS', is_active: true }])
     else if (url.includes('/admin/cycles/')) data = page([{ id: 1, name: 'Fall-26', opens_on: '2026-10-17', closes_on: '2026-11-02', is_active: true, applications: 7 }])
     else if (url.includes('/admin/audit-log/actions/')) data = [{ value: 'login', label: 'Logged in' }]
@@ -76,8 +82,36 @@ test('a user can be edited and sent a new invitation', async () => {
   await userEvent.click(within(row).getByRole('button', { name: 'Edit' }))
   await userEvent.click(within(row).getByRole('checkbox', { name: 'Active' }))
   await userEvent.click(within(row).getByRole('button', { name: 'Save' }))
-  expect(calls.find((c) => c.method === 'PATCH').body).toEqual({ role: 'placement_officer', department: null, is_active: false })
+  expect(calls.find((c) => c.method === 'PATCH').body).toEqual({ role: 'placement_officer', department: null, program: null, is_active: false })
   expect(await within(row).findByText('Deactivated')).toBeInTheDocument()
+})
+
+test("a student's program is shown and can be changed within their department", async () => {
+  mockApi([['PATCH', '/admin/users/4/', (body) => ({ ...USERS[2], ...body })]])
+  renderAt('/manage/users')
+  const row = (await screen.findByText('Ali Khan', {}, { timeout: 4000 })).closest('tr')
+  expect(within(row).getByText('BS Computer Science')).toBeInTheDocument()
+  await userEvent.click(within(row).getByRole('button', { name: 'Edit' }))
+  await userEvent.selectOptions(within(row).getByLabelText('Program of ali@students.au.edu.pk'), '8')
+  await userEvent.click(within(row).getByRole('button', { name: 'Save' }))
+  expect(calls.find((c) => c.method === 'PATCH').body).toEqual({ role: 'student', department: 5, program: 8, is_active: true })
+  expect(await within(row).findByText('BS Artificial Intelligence')).toBeInTheDocument()
+})
+
+test('programs can be added to a department and deactivated', async () => {
+  mockApi([
+    ['POST', '/admin/programs/', (body) => ({ id: 9, ...body })],
+    ['PATCH', '/admin/programs/7/', (body) => ({ ...PROGRAMS[0], ...body })],
+  ])
+  renderAt('/manage/programs')
+  const form = await screen.findByRole('form', { name: 'Add a program' }, { timeout: 4000 })
+  await userEvent.selectOptions(await within(form).findByLabelText('Department'), '5')
+  await userEvent.type(within(form).getByLabelText('Program name'), 'BS Data Science')
+  await userEvent.click(within(form).getByRole('button', { name: 'Add program' }))
+  expect(calls.find((c) => c.method === 'POST').body).toEqual({ department: 5, name: 'BS Data Science' })
+  const row = screen.getByText('BS Computer Science').closest('tr')
+  await userEvent.click(within(row).getByRole('button', { name: 'Deactivate' }))
+  expect(calls.find((c) => c.method === 'PATCH').body).toEqual({ is_active: false })
 })
 
 test('cycles can be opened and closed', async () => {

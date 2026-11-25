@@ -13,4 +13,4 @@ export const ROLE_LABELS = {
 }
 
 /** Roles that must belong to a department. */
-export const DEPARTMENT_ROLES = ['dac_member', 'dic']
+export const DEPARTMENT_ROLES = ['dac_member', 'dic', 'faculty_supervisor']

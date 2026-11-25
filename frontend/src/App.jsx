@@ -3,7 +3,7 @@ import logo from './assets/au-logo.png'
 import { useAuth } from './AuthContext.jsx'
 import NotificationBell from './notifications/NotificationBell.jsx'
 import NotificationsPage from './notifications/NotificationsPage.jsx'
-import { AuditLogPage, ManageCycles, ManageDepartments } from './manage/ManageRecords.jsx'
+import { AuditLogPage, ManageCycles, ManageDepartments, ManagePrograms } from './manage/ManageRecords.jsx'
 import ManageUsers from './manage/ManageUsers.jsx'
 import ReportsPage from './reports/ReportsPage.jsx'
 import Dashboard from './pages/Dashboard.jsx'
@@ -63,6 +63,7 @@ export default function App() {
         <Route path="/manage" element={<Navigate to="/manage/users" replace />} />
         <Route path="/manage/users" element={<RequireAuth role="administrator"><ManageUsers /></RequireAuth>} />
         <Route path="/manage/departments" element={<RequireAuth role="administrator"><ManageDepartments /></RequireAuth>} />
+        <Route path="/manage/programs" element={<RequireAuth role="administrator"><ManagePrograms /></RequireAuth>} />
         <Route path="/manage/cycles" element={<RequireAuth role="administrator"><ManageCycles /></RequireAuth>} />
         <Route path="/manage/audit" element={<RequireAuth role="administrator"><AuditLogPage /></RequireAuth>} />
         <Route path="/reports" element={<RequireAuth role={REPORT_ROLES}><ReportsPage /></RequireAuth>} />

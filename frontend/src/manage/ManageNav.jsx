@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import '../scholarship/scholarship.css'
 
-const PAGES = [['/manage/users', 'Users'], ['/manage/departments', 'Departments'], ['/manage/cycles', 'Scholarship cycles'],
+const PAGES = [['/manage/users', 'Users'], ['/manage/departments', 'Departments'],
+  ['/manage/programs', 'Programs'], ['/manage/cycles', 'Scholarship cycles'],
   ['/manage/audit', 'Audit log']]
 
 /** The Administrator's Manage area: one page per kind of record. */

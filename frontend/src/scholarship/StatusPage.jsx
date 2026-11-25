@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { openProtectedFile } from '../api.js'
-import { when } from '../common/dates.js'
+import { day, when } from '../common/dates.js'
 import Timeline from '../common/Timeline.jsx'
 import { FeeAdjustmentFacts } from '../review/finance.jsx'
 import { ReturnedBanner } from './ApplicationWizard.jsx'
@@ -82,7 +82,7 @@ export default function StatusPage() {
       {app.award_letter && (
         <section className="award-letter" aria-label="Award letter">
           <h2>Award letter</h2>
-          <p>Reference {app.award_letter.reference}, issued {new Date(app.award_letter.issued_on).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}.
+          <p>Reference {app.award_letter.reference}, issued {day(app.award_letter.issued_on)}.
             {app.award_letter.signed_copy ? ' This is the signed copy from the Placement Office.'
               : app.award_letter.signed_issued_on ? ' The Placement Office has issued the signed copy.'
                 : ' The Placement Office will also issue a signed copy.'}</p>

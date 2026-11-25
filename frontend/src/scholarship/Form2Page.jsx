@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, apiUpload, openProtectedFile } from '../api.js'
+import { day } from '../common/dates.js'
+import { checkFile, fileSize, MAX_MB, uploadError } from '../common/files.js'
 import { LockedBanner, StepNav } from './ApplicationWizard.jsx'
 import { useApplication } from './useApplication.js'
 import { FilePicker } from './DocumentsPage.jsx'
-import { checkFile, fileSize, MAX_MB, uploadError } from '../common/files.js'
 
-const date = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
 /** The official declaration text exactly as returned by the server (university wording, values filled in). */
 function Sheet({ printable }) {
@@ -77,14 +77,14 @@ function Declaration({ decl, appId, onChanged, printing, onPrint }) {
         <ul className="checks">
           <li className={decl.scan ? 'done' : 'pending'}>
             {decl.scan
-              ? <>Scan uploaded: {decl.scan.original_name} ({fileSize(decl.scan.size)}, {date(decl.scan.uploaded_at)}){' '}
+              ? <>Scan uploaded: {decl.scan.original_name} ({fileSize(decl.scan.size)}, {day(decl.scan.uploaded_at)}){' '}
                   <button type="button" className="link-button neutral"
                     onClick={() => openProtectedFile(decl.scan.download_url).catch((e) => setError(e.message))}>View</button></>
               : 'Scan not uploaded yet'}
           </li>
           <li className={decl.physical_received_on ? 'done' : 'pending'}>
             {decl.physical_received_on
-              ? `Original received by the Placement Office on ${date(decl.physical_received_on)}${decl.physical_received_by ? ` (${decl.physical_received_by})` : ''}`
+              ? `Original received by the Placement Office on ${day(decl.physical_received_on)}${decl.physical_received_by ? ` (${decl.physical_received_by})` : ''}`
               : 'Original not yet received by the Placement Office'}
           </li>
         </ul>

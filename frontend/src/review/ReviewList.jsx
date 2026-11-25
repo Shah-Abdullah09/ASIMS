@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api.js'
 import { useAuth } from '../AuthContext.jsx'
+import { day } from '../common/dates.js'
 import { STATUS_LABELS } from '../scholarship/options.js'
 import '../scholarship/scholarship.css'
 import { completionText } from './format.js'
 import { PLACEMENT, QUEUES } from './roles.js'
 
 const FILTERS = ['cycle', 'department', 'status', 'complete', 'search', 'ordering', 'page']
-const date = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—')
 
 /** A staff member's work queue. The Placement Office sees every case with filters and can forward shortlisted
 cases in bulk; the DAC and approvers see the cases waiting for them. Filters stay in the address bar. */
@@ -157,7 +157,7 @@ export default function ReviewList() {
                       <td>{a.department || '—'}</td>
                       <td>{a.cycle_name}</td>
                       <td><span className={`chip chip-${a.status}`}>{STATUS_LABELS[a.status]}</span></td>
-                      <td>{date(a.submitted_at)}</td>
+                      <td>{day(a.submitted_at)}</td>
                       <td className={a.completion.complete ? 'text-ok' : 'text-warn'}>{completionText(a.completion)}</td>
                     </tr>
                   ))}

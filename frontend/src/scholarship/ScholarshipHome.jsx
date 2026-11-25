@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api.js'
+import { day } from '../common/dates.js'
 import { STATUS_LABELS } from './options.js'
 import './scholarship.css'
 
-const date = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 
 /** Student's starting point: open cycles to apply to and their existing applications. */
 export default function ScholarshipHome() {
@@ -55,7 +55,7 @@ export default function ScholarshipHome() {
               <p className="card-title">{a.cycle_name} · Application {a.id}</p>
               <p>Status: <strong>{STATUS_LABELS[a.status]}</strong></p>
               <p className="field-hint">
-                {a.submitted_at ? `Submitted ${date(a.submitted_at)}` : `Last saved ${date(a.updated_at)}`}
+                {a.submitted_at ? `Submitted ${day(a.submitted_at)}` : `Last saved ${day(a.updated_at)}`}
               </p>
               <Link className="button" to={`/scholarships/${a.id}/${a.status === 'draft' ? 'personal' : a.status === 'returned' ? 'review' : 'status'}`}>
                 {a.status === 'draft' ? 'Continue' : a.status === 'returned' ? 'Make corrections' : 'View status'}
@@ -71,7 +71,7 @@ export default function ScholarshipHome() {
           {available.map((c) => (
             <li key={c.id} className="card">
               <p className="card-title">{c.name}</p>
-              <p className="field-hint">Open until {date(c.closes_on)}</p>
+              <p className="field-hint">Open until {day(c.closes_on)}</p>
               <button type="button" disabled={starting === c.id} onClick={() => start(c)}>
                 {starting === c.id ? 'Starting...' : 'Start application'}
               </button>

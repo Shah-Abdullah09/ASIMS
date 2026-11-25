@@ -35,6 +35,9 @@ class AuditAction(models.TextChoices):
     FEE_ADJUSTMENT_RECORDED = 'fee_adjustment_recorded', 'Fee adjustment recorded'
     DOCUMENT_CHECK_RUN = 'document_check_run', 'Automatic document check run'
     CYCLE_CHANGED = 'cycle_changed', 'Scholarship cycle added or changed'
+    COMPANY_CHANGED = 'company_changed', 'Company added or changed'
+    INTERNSHIP_CREATED = 'internship_created', 'Internship request started'
+    INTERNSHIP_SAVED = 'internship_saved', 'Internship request saved'
     WORKFLOW_ACTION = 'workflow_action', 'Workflow action'
 
 

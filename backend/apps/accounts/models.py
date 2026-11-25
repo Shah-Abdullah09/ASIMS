@@ -20,6 +20,9 @@ class Role(models.TextChoices):
 # supervisors from its own department)
 DEPARTMENT_ROLES = (Role.DAC_MEMBER, Role.DIC, Role.FACULTY_SUPERVISOR)
 
+# The Placement Office; the Administrator can also take its actions
+PLACEMENT_ROLES = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
+
 
 class Department(models.Model):
     name = models.CharField(max_length=120, unique=True)

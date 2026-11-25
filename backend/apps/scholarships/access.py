@@ -1,11 +1,10 @@
 """Which submitted applications each staff role can see. One rule for the case list, the case page and
 file downloads, so a role never reaches a file of a case it cannot open."""
-from apps.accounts.models import Role
+from apps.accounts.models import PLACEMENT_ROLES as PLACEMENT, Role
 
 from .choices import ApplicationStatus
 from .models import Application
 
-PLACEMENT = (Role.PLACEMENT_OFFICER, Role.ADMINISTRATOR)
 # Approvers see only the cases waiting at their own stage
 APPROVER_STAGE = {Role.DIRECTOR: ApplicationStatus.DIRECTOR_REVIEW, Role.REGISTRAR: ApplicationStatus.REGISTRAR_REVIEW,
                   Role.VICE_CHANCELLOR: ApplicationStatus.VC_REVIEW}

@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'apps.accounts',
     'apps.scholarships',
+    'apps.internships',
     'apps.workflow',
     'apps.audit',
     'apps.documents',
